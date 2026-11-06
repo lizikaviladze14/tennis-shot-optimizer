@@ -7,19 +7,22 @@ import type { CourtPoint } from '@/math/point'
 import { SHOT_ACCURACY_PRESETS, type ShotAccuracy, type ShotAccuracyLevel } from '@/types/shotAccuracy'
 import { OPPONENT_SKILL_PRESETS, type OpponentSkill, type OpponentSkillLevel } from '@/types/opponentSkill'
 import SegmentedControl from '@/components/base/SegmentedControl.vue'
+import { RISK_PRESETS, type RiskPreference } from '@/types/riskPreference'
 
 const props = withDefaults(defineProps<{
     surface?: TennisCourtSurface,
     you?: CourtPoint,
     opponent?: CourtPoint,
     shotAccuracy?: ShotAccuracy,
-    opponentSkill?: OpponentSkill
+    opponentSkill?: OpponentSkill,
+    riskPreference?: RiskPreference
 }>(), {
     surface: 'hard',
     you: () => ({ ...DEFAULT_YOU }),
     opponent: () => ({ ...DEFAULT_OPPONENT }),
     shotAccuracy: () => ({ level: 'advanced', ...SHOT_ACCURACY_PRESETS.advanced }),
     opponentSkill: () => ({ level: 'advanced', ...OPPONENT_SKILL_PRESETS.advanced }),
+    riskPreference: 'balanced',
 })
 
 const emit = defineEmits<{
@@ -32,6 +35,7 @@ const emit = defineEmits<{
     selectOpponentSkill: [level: OpponentSkillLevel]
     updateRunSpeed: [metresPerSecond: number]
     updateConsistency: [fraction: number]
+    selectRiskPreference: [preference: RiskPreference]
 }>()
 
 const surfaces: { id: TennisCourtSurface; label: string }[] = [
@@ -51,6 +55,16 @@ const opponentSkillLevels: { id: OpponentSkillLevel; label: string }[] = [
     { id: 'advanced', label: 'Advanced' },
     { id: 'pro', label: 'Pro' },
 ]
+
+const riskPreferences = (Object.keys(RISK_PRESETS) as RiskPreference[]).map((id) => ({
+    id,
+    label: RISK_PRESETS[id].label,
+}))
+
+const riskDescription = computed(() => {
+    const preset = RISK_PRESETS[props.riskPreference]
+    return `${preset.description} (λ = ${preset.riskWeight.toFixed(1)}).`
+})
 
 const sideErrorM = computed(() => props.shotAccuracy.sideErrorM)
 const depthErrorM = computed(() => props.shotAccuracy.depthErrorM)
@@ -194,8 +208,18 @@ const opponentDescription = computed(() => describePlayerPosition('opponent', pr
                     <input type="range" :value="consistencyPercent" min="50" max="99" step="1" aria-label="Consistency"
                         @input="emit('updateConsistency', onRangeInput($event) / 100)" />
                 </div>
-                <p class="hint">How fast they cover the court, and how often they make a ball they reach. Illustrative
-                    values, not fitted to real players.</p>
+                <p class="hint">Running speed is how fast they cover the court. Consistency is how often they return a
+                    ball they reach. Illustrative values, not fitted to real players.</p>
+            </div>
+        </section>
+
+        <section class="simulation">
+            <div class="content-wrapper">
+                <h3>Simulation</h3>
+                <div class="control-label">Risk preference</div>
+                <SegmentedControl :options="riskPreferences" :model-value="riskPreference"
+                    ariaLabel="Risk preference" @update:model-value="emit('selectRiskPreference', $event)" />
+                <p class="hint">{{ riskDescription }}</p>
             </div>
         </section>
     </div>
@@ -478,6 +502,28 @@ section {
 
         .hint {
             margin-top: 1.4rem;
+        }
+    }
+
+    &.simulation {
+        .control-label {
+            margin-top: 1.4rem;
+            color: var(--text-color-primary);
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .options {
+            margin-top: 0.8rem;
+
+            :deep(.option) {
+                width: calc(100% / 3 - 0.4rem);
+                justify-content: center;
+            }
+        }
+
+        .hint {
+            margin-top: 1rem;
         }
     }
 }

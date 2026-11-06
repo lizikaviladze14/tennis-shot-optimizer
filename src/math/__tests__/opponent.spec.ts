@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { reachProbability, returnProbability } from '../opponent'
+import { opponentCoverage, reachProbability, returnProbability } from '../opponent'
 import type { OpponentSkill } from '@/types/opponentSkill'
 
 const hitter = { x: 0, y: 5.485 }
 const opponent = { x: 20, y: 8.485 }
 const landing = { x: 20, y: 5.485 }
 const opponentSkill: OpponentSkill = { level: 'advanced', runSpeedMps: 5, consistency: 0.88 }
+
+describe('opponentCoverage', () => {
+  it('is run speed × flight time (20 m at 25 m/s = 0.8 s)', () => {
+    expect(opponentCoverage(hitter, landing, 25, 5)).toBe(4)
+  })
+
+  it('throws when ballSpeedMps is 0', () => {
+    expect(() => opponentCoverage(hitter, landing, 0, 5)).toThrow('ballSpeedMps')
+  })
+})
 
 describe('reachProbability', () => {
   it('is 0.5 at the edge of reach', () => {

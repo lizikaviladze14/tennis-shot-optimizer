@@ -12,6 +12,10 @@ export const WHOLE_COURT_WIDTH_M = COURT_SURFACE_WIDTH_M + 2 * RUNOFF_M
 export const SINGLES_ALLEY_M =
   (COURT_SURFACE_WIDTH_M - COURT_SURFACE_SINGLES_WIDTH_M) / 2
 
+// left/right as seen by the hitter: left = smaller y
+export const SINGLES_LEFT_Y_M = SINGLES_ALLEY_M
+export const SINGLES_RIGHT_Y_M = COURT_SURFACE_WIDTH_M - SINGLES_ALLEY_M
+
 export const SERVICE_LINE_FROM_NET_M = 6.4
 
 export const SERVICE_LINE_NEAR_X_M = NET_X_M - SERVICE_LINE_FROM_NET_M

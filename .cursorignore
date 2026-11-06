@@ -2,4 +2,5 @@
 # src/math/random.ts
 # src/math/simulation.ts
 # src/math/opponent.ts
+src/math/optimizer.ts
 

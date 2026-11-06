@@ -12,6 +12,22 @@ export function reachProbability(margin: number, steepness: number): number {
 }
 
 /**
+ * How far the opponent can run while the ball travels from hitter to landing.
+ * coverage = runSpeedMps × (distance(hitter, landing) ÷ ballSpeedMps)
+ */
+export function opponentCoverage(
+  hitter: CourtPoint,
+  landing: CourtPoint,
+  ballSpeedMps: number,
+  runSpeedMps: number,
+): number {
+  if (ballSpeedMps <= 0) throw new Error('opponentCoverage: ballSpeedMps must be greater than 0')
+
+  const ballFlightTime = distance(hitter, landing) / ballSpeedMps
+  return runSpeedMps * ballFlightTime
+}
+
+/**
  * Chance the opponent returns a ball that landed in: consistency × chance of reaching it.
  * Reach = running speed × ball flight time, flight time = hitter-to-landing distance ÷ ball speed.
  */
@@ -23,11 +39,7 @@ export function returnProbability(
   opponentSkill: OpponentSkill,
   steepness: number,
 ): number {
-  if (ballSpeedMps <= 0) throw new Error('returnProbability: ballSpeedMps must be greater than 0')
-
-  const ballFlightDistance = distance(hitter, landing)
-  const ballFlightTime = ballFlightDistance / ballSpeedMps
-  const opponentReach = opponentSkill.runSpeedMps * ballFlightTime
+  const opponentReach = opponentCoverage(hitter, landing, ballSpeedMps, opponentSkill.runSpeedMps)
   const gap = distance(opponent, landing)
   const margin = gap - opponentReach
   const pReach = reachProbability(margin, steepness)

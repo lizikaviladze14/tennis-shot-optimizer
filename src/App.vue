@@ -8,9 +8,11 @@ import { DEFAULT_YOU, DEFAULT_OPPONENT } from '@/math/playerPosition'
 import type { CourtPoint } from '@/math/point'
 import { CENTER_SERVICE_Y_M } from '@/math/courtGeometry'
 import { estimateShotOutcome, type ShotScenario } from '@/math/simulation'
+import { opponentCoverage } from '@/math/opponent'
 import { createDraws, mulberry32 } from '@/math/random'
 import { SHOT_ACCURACY_PRESETS, type ShotAccuracy, type ShotAccuracyLevel } from '@/types/shotAccuracy'
 import { OPPONENT_SKILL_PRESETS, type OpponentSkill, type OpponentSkillLevel } from '@/types/opponentSkill'
+import type { RiskPreference } from '@/types/riskPreference'
 import CourtControls from './components/court/CourtControls.vue'
 
 const surface = ref<TennisCourtSurface>('hard')
@@ -57,6 +59,8 @@ function setConsistency(consistency: number) {
   opponentSkill.value = { ...opponentSkill.value, consistency }
 }
 
+const riskPreference = ref<RiskPreference>('balanced')
+
 const you = ref<CourtPoint>({ ...DEFAULT_YOU })
 const opponent = ref<CourtPoint>({ ...DEFAULT_OPPONENT })
 const target = ref<CourtPoint>({ x: 18, y: CENTER_SERVICE_Y_M })
@@ -73,6 +77,10 @@ const scenario = computed<ShotScenario>(() => ({
 
 const outcome = computed(() => estimateShotOutcome(scenario.value, target.value, draws))
 
+const coverage = computed(() =>
+  opponentCoverage(you.value, target.value, shotAccuracy.value.ballSpeedMps, opponentSkill.value.runSpeedMps),
+)
+
 function resetPositions() {
   you.value = { ...DEFAULT_YOU }
   opponent.value = { ...DEFAULT_OPPONENT }
@@ -85,7 +93,8 @@ function resetPositions() {
       :opponent-skill="opponentSkill" @select-surface="surface = $event" @reset-positions="resetPositions"
       @select-accuracy="selectAccuracy" @update-side-error="setSideError" @update-depth-error="setDepthError" @update-ball-speed="setBallSpeed"
       @select-opponent-skill="selectOpponentSkill" @update-run-speed="setRunSpeed"
-      @update-consistency="setConsistency" />
+      @update-consistency="setConsistency" :risk-preference="riskPreference"
+      @select-risk-preference="riskPreference = $event" />
     <main>
       <div class="court-wrapper">
         <div class="heading">
@@ -101,7 +110,7 @@ function resetPositions() {
           @update:show-landings="showLandings = $event" />
       </div>
     </main>
-    <RightSidebar :outcome="outcome" />
+    <RightSidebar :aim="target" :opponent="opponent" :outcome="outcome" :coverage-m="coverage" />
   </div>
 </template>
 

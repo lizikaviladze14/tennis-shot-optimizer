@@ -1,4 +1,4 @@
-import { COURT_SURFACE_LENGTH_M, COURT_SURFACE_WIDTH_M, NET_X_M, RUNOFF_M, SINGLES_ALLEY_M } from "./courtGeometry";
+import { COURT_SURFACE_LENGTH_M, COURT_SURFACE_WIDTH_M, NET_X_M, RUNOFF_M, SINGLES_LEFT_Y_M, SINGLES_RIGHT_Y_M } from "./courtGeometry";
 import { type CourtPoint, distance } from "./point";
 
 
@@ -14,8 +14,8 @@ export function isPointInCourt(point: CourtPoint) {
     return (
       point.x > NET_X_M &&
       point.x <= COURT_SURFACE_LENGTH_M &&
-      point.y >= SINGLES_ALLEY_M &&
-      point.y <= COURT_SURFACE_WIDTH_M - SINGLES_ALLEY_M
+      point.y >= SINGLES_LEFT_Y_M &&
+      point.y <= SINGLES_RIGHT_Y_M
     )
 }
 
