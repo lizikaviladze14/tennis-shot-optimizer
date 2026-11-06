@@ -7,7 +7,7 @@ import type { TennisCourtSurface } from '@/types/tennisCourt'
 import { DEFAULT_YOU, DEFAULT_OPPONENT } from '@/math/playerPosition'
 import type { CourtPoint } from '@/math/point'
 import { CENTER_SERVICE_Y_M } from '@/math/courtGeometry'
-import { estimateInProbability } from '@/math/simulation'
+import { estimateShotOutcome, type ShotScenario } from '@/math/simulation'
 import { createDraws, mulberry32 } from '@/math/random'
 import { SHOT_ACCURACY_PRESETS, type ShotAccuracy, type ShotAccuracyLevel } from '@/types/shotAccuracy'
 import { OPPONENT_SKILL_PRESETS, type OpponentSkill, type OpponentSkillLevel } from '@/types/opponentSkill'
@@ -64,9 +64,14 @@ const target = ref<CourtPoint>({ x: 18, y: CENTER_SERVICE_Y_M })
 const DRAWS_SEED = 42
 const draws = createDraws(500, mulberry32(DRAWS_SEED))
 
-const inProbability = computed(() =>
-  estimateInProbability(you.value, target.value, shotAccuracy.value.depthErrorM, shotAccuracy.value.sideErrorM, draws),
-)
+const scenario = computed<ShotScenario>(() => ({
+  hitter: you.value,
+  opponent: opponent.value,
+  shot: shotAccuracy.value,
+  opponentSkill: opponentSkill.value,
+}))
+
+const outcome = computed(() => estimateShotOutcome(scenario.value, target.value, draws))
 
 function resetPositions() {
   you.value = { ...DEFAULT_YOU }
@@ -96,7 +101,7 @@ function resetPositions() {
           @update:show-landings="showLandings = $event" />
       </div>
     </main>
-    <RightSidebar :in-probability="inProbability" />
+    <RightSidebar :outcome="outcome" />
   </div>
 </template>
 

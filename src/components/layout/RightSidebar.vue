@@ -1,12 +1,20 @@
 <script setup lang="ts">
+import type { ShotOutcome } from '@/math/simulation'
+
 defineProps<{
-    inProbability: number
+    outcome: ShotOutcome
 }>()
+
+function percent(fraction: number) {
+    return `${Math.round(fraction * 100)}%`
+}
 </script>
 
 <template>
     <div class="right-sidebar">
-        Lands in: {{ Math.round(inProbability * 100) }}%
+        <p>Lands in: {{ percent(outcome.pIn) }}</p>
+        <p>Opponent returns (if in): {{ outcome.pReturnGivenIn === null ? '—' : percent(outcome.pReturnGivenIn) }}</p>
+        <p>Wins the point: {{ percent(outcome.pWin) }}</p>
     </div>
 </template>
 

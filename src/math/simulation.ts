@@ -1,40 +1,56 @@
+import type { OpponentSkill } from '@/types/opponentSkill'
+import type { ShotAccuracy } from '@/types/shotAccuracy'
 import { landingPoint } from './landing'
+import { REACH_STEEPNESS } from './modelConstants'
+import { returnProbability } from './opponent'
 import type { CourtPoint } from './point'
 import type { StandardDraw } from './random'
 import { isPointInCourt } from './shotScore'
 
+export type ShotScenario = {
+  hitter: CourtPoint
+  opponent: CourtPoint
+  shot: ShotAccuracy
+  opponentSkill: OpponentSkill
+}
+
+export type ShotOutcome = { pIn: number; pWin: number; pReturnGivenIn: number | null }
+
 /**
- * Estimates the probability of a shot being in the court given the error margins.
- * @param hitter - The hitter's position.
+ * Estimates the outcome of a shot at `aim` by landing one shot per draw.
+ * pIn and pWin divide by all shots: an out ball counts as a lost point.
+ * pReturnGivenIn divides only by the shots that land in, and is null when none do.
+ * @param scenario - Hitter, opponent, your shot and the opponent's skill.
  * @param aim - The aim's position.
- * @param depthErrorM - The depth error margin in meters.
- * @param sideErrorM - The side error margin in meters.
  * @param draws - Standard normal swings shared by every aim
- * @returns The probability of a shot being in the court.
  */
-export function estimateInProbability(
-  hitter: CourtPoint,
-  aim: CourtPoint,
-  depthErrorM: number,
-  sideErrorM: number,
-  draws: StandardDraw[],
-): number {
+export function estimateShotOutcome(scenario: ShotScenario, aim: CourtPoint, draws: StandardDraw[]): ShotOutcome {
   if (draws.length === 0) {
-    throw new Error('estimateInProbability: draws must not be empty')
+    throw new Error('estimateShotOutcome: draws must not be empty')
   }
 
-  let inCourtCount = 0
+  const { hitter, opponent, shot, opponentSkill } = scenario
+  let inCount = 0
+  let returnSum = 0
+  let winSum = 0
 
   draws.forEach((draw) => {
-    const depthOffset = depthErrorM * draw.z1
-    const sideOffset = sideErrorM * draw.z2
+    const depthOffset = shot.depthErrorM * draw.z1
+    const sideOffset = shot.sideErrorM * draw.z2
 
     const landing = landingPoint(hitter, aim, depthOffset, sideOffset)
 
     if (isPointInCourt(landing)) {
-      inCourtCount++
+      inCount++
+      const pReturn = returnProbability(hitter, opponent, landing, shot.ballSpeedMps, opponentSkill, REACH_STEEPNESS)
+      returnSum += pReturn
+      winSum += 1 - pReturn
     }
   })
 
-  return inCourtCount / draws.length
+  return {
+    pIn: inCount / draws.length,
+    pWin: winSum / draws.length,
+    pReturnGivenIn: inCount > 0 ? returnSum / inCount : null,
+  }
 }
