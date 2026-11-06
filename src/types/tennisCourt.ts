@@ -1,0 +1,1 @@
+export type TennisCourtSurface = 'hard' | 'clay' | 'grass';
