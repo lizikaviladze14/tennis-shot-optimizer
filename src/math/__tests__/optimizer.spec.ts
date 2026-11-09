@@ -11,8 +11,8 @@ import {
   SINGLES_RIGHT_Y_M,
 } from '../courtGeometry'
 
-const A: ShotOutcome = { pIn: 0.8, pWin: 0.4, pReturnGivenIn: null }
-const B: ShotOutcome = { pIn: 0.97, pWin: 0.3, pReturnGivenIn: null }
+const A: ShotOutcome = { pIn: 0.8, pWin: 0.4, pReturnGivenIn: null, winContributionVariance: 0 }
+const B: ShotOutcome = { pIn: 0.97, pWin: 0.3, pReturnGivenIn: null, winContributionVariance: 0 }
 
 describe('shotValue', () => {
   it('prefers the safer shot B with riskWeight 1', () => {
@@ -35,7 +35,7 @@ describe('shotValue', () => {
   })
 
   it('can be negative', () => {
-    expect(shotValue({ pIn: 0.5, pWin: 0.2, pReturnGivenIn: null }, 1)).toBeCloseTo(-0.3)
+    expect(shotValue({ pIn: 0.5, pWin: 0.2, pReturnGivenIn: null, winContributionVariance: 0 }, 1)).toBeCloseTo(-0.3)
   })
 
   it('throws when riskWeight is negative', () => {

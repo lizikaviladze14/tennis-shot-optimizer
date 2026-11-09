@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import TennisCourt from '../TennisCourt.vue'
-import { NET_X_M } from '@/math/courtGeometry'
+import { NET_X_M, WHOLE_COURT_LENGTH_M, WHOLE_COURT_WIDTH_M } from '@/math/courtGeometry'
 
 const you = { x: 2, y: 5 }
 const opponent = { x: 20, y: 4 }
@@ -58,5 +58,18 @@ describe('TennisCourt: keyboard movement', () => {
     const wrapper = mountCourt()
     await markers(wrapper).youMarker.trigger('keydown', { key: 'a' })
     expect(wrapper.emitted('update:you')).toBeUndefined()
+  })
+})
+
+describe('TennisCourt: vertical layout', () => {
+  it('uses a portrait viewBox', () => {
+    const wrapper = mount(TennisCourt, { props: { you, opponent, vertical: true } })
+    expect(wrapper.get('svg').attributes('viewBox')).toBe(`0 0 ${WHOLE_COURT_WIDTH_M} ${WHOLE_COURT_LENGTH_M}`)
+  })
+
+  it('moves toward the opponent with ArrowUp', async () => {
+    const wrapper = mount(TennisCourt, { props: { you, opponent, vertical: true } })
+    await markers(wrapper).youMarker.trigger('keydown', { key: 'ArrowUp' })
+    expect(wrapper.emitted('update:you')?.[0]).toEqual([{ x: 2.25, y: 5 }])
   })
 })

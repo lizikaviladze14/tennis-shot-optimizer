@@ -72,3 +72,21 @@ describe('estimateShotOutcome: return and win', () => {
     expect(result.pReturnGivenIn).toBeNull()
   })
 })
+
+describe('estimateShotOutcome: winContributionVariance', () => {
+  it('is 0 when every shot has the same win contribution', () => {
+    expect(estimateShotOutcome(scenario, aimAtLanding, [centerDraw]).winContributionVariance).toBe(0)
+    expect(estimateShotOutcome(scenario, aimLong, [centerDraw]).winContributionVariance).toBe(0)
+  })
+
+  it('is 0.25 for one unreturnable in-shot and one out', () => {
+    const neverReturns: ShotScenario = {
+      ...scenario,
+      opponentSkill: { ...scenario.opponentSkill, consistency: 0 },
+    }
+    const result = estimateShotOutcome(neverReturns, aimAtLanding, [centerDraw, wideDraw])
+
+    expect(result.pWin).toBe(0.5)
+    expect(result.winContributionVariance).toBe(0.25)
+  })
+})

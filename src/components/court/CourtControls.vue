@@ -4,23 +4,41 @@ import BaseCheckbox from '@/components/base/BaseCheckbox.vue'
 
 const showDispersion = ref(true)
 const showTrajectory = ref(true)
+const showHeatmap = ref(false)
+const showLandings = ref(false)
 
 const emit = defineEmits<{
     'update:showDispersion': [value: boolean]
     'update:showTrajectory': [value: boolean]
+    'update:showHeatmap': [value: boolean]
+    'update:showLandings': [value: boolean]
 }>()
 
 watch(showDispersion, (value) => emit('update:showDispersion', value))
 watch(showTrajectory, (value) => emit('update:showTrajectory', value))
+watch(showHeatmap, (value) => emit('update:showHeatmap', value))
+watch(showLandings, (value) => emit('update:showLandings', value))
 </script>
 
 <template>
     <div class="court-controls">
         <div class="toggles">
-            <BaseCheckbox v-model="showDispersion" class="toggle">Shot dispersion</BaseCheckbox>
-            <BaseCheckbox v-model="showTrajectory" class="toggle">Trajectory</BaseCheckbox>
-            <BaseCheckbox :model-value="false" disabled class="toggle">Value heatmap</BaseCheckbox>
-            <BaseCheckbox :model-value="false" disabled class="toggle">Simulated landings</BaseCheckbox>
+            <BaseCheckbox v-model="showDispersion" class="toggle">
+                <span class="label-full">Shot dispersion</span>
+                <span class="label-short">Dispersion</span>
+            </BaseCheckbox>
+            <BaseCheckbox v-model="showTrajectory" class="toggle">
+                <span class="label-full">Trajectory</span>
+                <span class="label-short">Trajectory</span>
+            </BaseCheckbox>
+            <BaseCheckbox v-model="showHeatmap" class="toggle">
+                <span class="label-full">Value heatmap</span>
+                <span class="label-short">Heatmap</span>
+            </BaseCheckbox>
+            <BaseCheckbox v-model="showLandings" class="toggle">
+                <span class="label-full">Simulated landings</span>
+                <span class="label-short">Landings</span>
+            </BaseCheckbox>
         </div>
         <ul class="legend">
             <li>
@@ -50,6 +68,8 @@ watch(showTrajectory, (value) => emit('update:showTrajectory', value))
 </template>
 
 <style lang="scss" scoped>
+@use '../../styles/breakpoints' as *;
+
 .court-controls {
     margin-top: 1.2rem;
 
@@ -57,6 +77,10 @@ watch(showTrajectory, (value) => emit('update:showTrajectory', value))
         display: flex;
         align-items: center;
         gap: .5rem;
+
+        .label-short {
+            display: none;
+        }
     }
 
     .legend {
@@ -124,6 +148,38 @@ watch(showTrajectory, (value) => emit('update:showTrajectory', value))
                     background-color: var(--layout-bg-color);
                 }
             }
+        }
+    }
+}
+
+@media (max-width: $layout-wide) {
+    .court-controls {
+        .toggles {
+            flex-wrap: wrap;
+
+            .label-full {
+                display: none;
+            }
+
+            .label-short {
+                display: inline;
+            }
+
+            :deep(.base-checkbox) {
+                flex: 1;
+                justify-content: center;
+                min-width: 0;
+                padding: 0.7rem 0.6rem;
+                font-size: 1.1rem;
+            }
+
+            :deep(.box) {
+                display: none;
+            }
+        }
+
+        .legend {
+            display: none;
         }
     }
 }

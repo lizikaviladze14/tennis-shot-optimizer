@@ -8,6 +8,7 @@ import { SHOT_ACCURACY_PRESETS, type ShotAccuracy, type ShotAccuracyLevel } from
 import { OPPONENT_SKILL_PRESETS, type OpponentSkill, type OpponentSkillLevel } from '@/types/opponentSkill'
 import SegmentedControl from '@/components/base/SegmentedControl.vue'
 import { RISK_PRESETS, type RiskPreference } from '@/types/riskPreference'
+import { DEFAULT_SHOT_COUNT, SHOT_COUNT_OPTIONS, type ShotCount, type ShotCountId } from '@/types/shotCount'
 
 const props = withDefaults(defineProps<{
     surface?: TennisCourtSurface,
@@ -15,7 +16,8 @@ const props = withDefaults(defineProps<{
     opponent?: CourtPoint,
     shotAccuracy?: ShotAccuracy,
     opponentSkill?: OpponentSkill,
-    riskPreference?: RiskPreference
+    riskPreference?: RiskPreference,
+    shotCount?: ShotCount,
 }>(), {
     surface: 'hard',
     you: () => ({ ...DEFAULT_YOU }),
@@ -23,6 +25,7 @@ const props = withDefaults(defineProps<{
     shotAccuracy: () => ({ level: 'advanced', ...SHOT_ACCURACY_PRESETS.advanced }),
     opponentSkill: () => ({ level: 'advanced', ...OPPONENT_SKILL_PRESETS.advanced }),
     riskPreference: 'balanced',
+    shotCount: DEFAULT_SHOT_COUNT,
 })
 
 const emit = defineEmits<{
@@ -36,6 +39,7 @@ const emit = defineEmits<{
     updateRunSpeed: [metresPerSecond: number]
     updateConsistency: [fraction: number]
     selectRiskPreference: [preference: RiskPreference]
+    selectShotCount: [count: ShotCount]
 }>()
 
 const surfaces: { id: TennisCourtSurface; label: string }[] = [
@@ -60,6 +64,14 @@ const riskPreferences = (Object.keys(RISK_PRESETS) as RiskPreference[]).map((id)
     id,
     label: RISK_PRESETS[id].label,
 }))
+
+const shotCountOptions = SHOT_COUNT_OPTIONS.map(({ id, label }) => ({ id, label }))
+const shotCountId = computed<ShotCountId>(() => String(props.shotCount) as ShotCountId)
+
+function onSelectShotCount(id: ShotCountId) {
+    const option = SHOT_COUNT_OPTIONS.find((entry) => entry.id === id)
+    if (option) emit('selectShotCount', option.count)
+}
 
 const riskDescription = computed(() => {
     const preset = RISK_PRESETS[props.riskPreference]
@@ -216,10 +228,19 @@ const opponentDescription = computed(() => describePlayerPosition('opponent', pr
         <section class="simulation">
             <div class="content-wrapper">
                 <h3>Simulation</h3>
-                <div class="control-label">Risk preference</div>
-                <SegmentedControl :options="riskPreferences" :model-value="riskPreference" ariaLabel="Risk preference"
-                    @update:model-value="emit('selectRiskPreference', $event)" />
-                <p class="hint">{{ riskDescription }}</p>
+                <div class="shot-count">
+                    <div class="control-label">Shots per target</div>
+                    <SegmentedControl :options="shotCountOptions" :model-value="shotCountId"
+                        ariaLabel="Shots per target" @update:model-value="onSelectShotCount" />
+                    <p class="hint">More shots give steadier percentages and take longer. Every candidate uses the same
+                        draws.</p>
+                </div>
+                <div class="risk">
+                    <div class="control-label">Risk preference</div>
+                    <SegmentedControl :options="riskPreferences" :model-value="riskPreference"
+                        ariaLabel="Risk preference" @update:model-value="emit('selectRiskPreference', $event)" />
+                    <p class="hint">{{ riskDescription }}</p>
+                </div>
             </div>
         </section>
     </div>
@@ -517,13 +538,18 @@ section {
             font-weight: 600;
         }
 
+        .shot-count .options :deep(.option) {
+            width: calc(100% / 4 - 0.4rem);
+            justify-content: center;
+        }
+
+        .risk .options :deep(.option) {
+            width: calc(100% / 3 - 0.4rem);
+            justify-content: center;
+        }
+
         .options {
             margin-top: 0.8rem;
-
-            :deep(.option) {
-                width: calc(100% / 3 - 0.4rem);
-                justify-content: center;
-            }
         }
 
         .hint {

@@ -12,7 +12,9 @@ import {
     SERVICE_LINE_FAR_X_M,
     CENTER_SERVICE_Y_M,
     COURT_SURFACE_SINGLES_WIDTH_M,
-    CENTER_MARK_LENGTH_M
+    CENTER_MARK_LENGTH_M,
+    SINGLES_LEFT_Y_M,
+    SINGLES_RIGHT_Y_M,
 } from '@/math/courtGeometry'
 import type { TennisCourtSurface } from '@/types/tennisCourt'
 import { ref, computed } from 'vue'
@@ -21,6 +23,9 @@ import { SHOT_ACCURACY_PRESETS, type ShotAccuracy } from '@/types/shotAccuracy'
 import { DEFAULT_YOU, DEFAULT_OPPONENT } from '@/math/playerPosition'
 import { distance, type CourtPoint } from '@/math/point'
 import type { AimResult } from '@/math/optimizer'
+import type { LandingKind } from '@/math/analytics'
+import { GRID_CELLS } from '@/math/modelConstants'
+import { courtToViewBox, viewBoxToCourt } from './courtView'
 
 interface Props {
     surface?: TennisCourtSurface
@@ -34,8 +39,12 @@ interface Props {
     showLandings?: boolean
     recommendedAim?: CourtPoint
     isStale?: boolean
-    showRecommendedShot?: boolean
+    shownShot?: 'target' | 'recommended' | 'alternative'
+    alternativeAim?: CourtPoint
+    alternativeLabel?: string
     aimResults?: AimResult[]
+    simulatedLandings?: { point: CourtPoint; kind: LandingKind }[]
+    vertical?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -53,8 +62,12 @@ const props = withDefaults(defineProps<Props>(), {
     showLandings: false,
     recommendedAim: undefined,
     isStale: false,
-    showRecommendedShot: false,
+    shownShot: 'target',
+    alternativeAim: undefined,
+    alternativeLabel: '',
     aimResults: undefined,
+    simulatedLandings: () => [],
+    vertical: false,
 })
 
 const emit = defineEmits<{
@@ -110,11 +123,65 @@ const recommendedColor = '#6fd08c'
 const recommendedRingRadius = 0.32
 const recommendedDotRadius = 0.1
 
-// the dispersion and trajectory follow either the recommended aim or your target
-const isRecommendedShot = computed(() => props.showRecommendedShot && props.recommendedAim !== undefined)
-const shotAim = computed(() => (isRecommendedShot.value && props.recommendedAim) || props.target)
-const shotColor = computed(() => (isRecommendedShot.value ? recommendedColor : 'var(--court-target-color)'))
-const shotOpacity = computed(() => (isRecommendedShot.value && props.isStale ? 0.5 : 1))
+// alternative aim (safest or highest win), shown when picked in Compare alternatives
+const alternativeColor = 'var(--text-color-primary)'
+const alternativeLabelWidth = computed(() => props.alternativeLabel.length * 0.17 + 0.5)
+
+// the dispersion and trajectory follow the shown shot: recommended, alternative or your target
+const shownShotDrawing = computed(() => {
+    if (props.shownShot === 'recommended' && props.recommendedAim) {
+        return { aim: props.recommendedAim, color: recommendedColor, fromCalculation: true }
+    }
+    if (props.shownShot === 'alternative' && props.alternativeAim) {
+        return { aim: props.alternativeAim, color: alternativeColor, fromCalculation: true }
+    }
+    return { aim: props.target, color: 'var(--court-target-color)', fromCalculation: false }
+})
+const shotAim = computed(() => shownShotDrawing.value.aim)
+const shotColor = computed(() => shownShotDrawing.value.color)
+const shotOpacity = computed(() => (shownShotDrawing.value.fromCalculation && props.isStale ? 0.5 : 1))
+
+const overlayOpacity = computed(() => (props.isStale ? 0.5 : 1))
+
+const cellW = (COURT_SURFACE_LENGTH_M - NET_X_M) / GRID_CELLS
+const cellH = (SINGLES_RIGHT_Y_M - SINGLES_LEFT_Y_M) / GRID_CELLS
+
+const heatmapCells = computed(() => {
+    const results = props.aimResults
+    if (!results || results.length === 0) return []
+    let min = Infinity
+    let max = -Infinity
+    for (const result of results) {
+        if (result.value < min) min = result.value
+        if (result.value > max) max = result.value
+    }
+    const span = max - min
+    const list: { x: number; y: number; t: number }[] = []
+    for (let i = 0; i < GRID_CELLS; i++) {
+        for (let j = 0; j < GRID_CELLS; j++) {
+            const result = results[i * GRID_CELLS + j]
+            if (!result) continue
+            const t = span === 0 ? 1 : (result.value - min) / span
+            list.push({
+                x: courtX + NET_X_M + i * cellW,
+                y: courtY + SINGLES_LEFT_Y_M + j * cellH,
+                t,
+            })
+        }
+    }
+    return list
+})
+
+function heatmapFill(t: number) {
+    return `rgba(111, 208, 140, ${0.08 + t * 0.45})`
+}
+
+const landingColor: Record<LandingKind, string> = {
+    in: '#e8edf0',
+    long: '#e88980',
+    wide: '#e88980',
+    netShort: '#e88980',
+}
 
 const shotAngle = computed(() => {
     const dx = shotAim.value.x - props.you.x
@@ -124,21 +191,31 @@ const shotAngle = computed(() => {
 
 const svgRef = ref<SVGSVGElement | null>(null)
 
+const viewBoxWidth = computed(() => (props.vertical ? WHOLE_COURT_WIDTH_M : WHOLE_COURT_LENGTH_M))
+const viewBoxHeight = computed(() => (props.vertical ? WHOLE_COURT_LENGTH_M : WHOLE_COURT_WIDTH_M))
+const courtTransform = computed(() =>
+    props.vertical ? `translate(0 ${WHOLE_COURT_LENGTH_M}) rotate(-90)` : undefined,
+)
+
+function toView(point: CourtPoint) {
+    return courtToViewBox(point, props.vertical)
+}
+
 function pointerToCourt(event: PointerEvent) {
     const svg = svgRef.value
     if (!svg) return null
-    const point = svg.createSVGPoint()
-    point.x = event.clientX
-    point.y = event.clientY
-    const screen = svg.getScreenCTM()
-    if (!screen) return null
-    const svgPoint = point.matrixTransform(screen.inverse())
-    return { x: svgPoint.x - courtX, y: svgPoint.y - courtY }
+    const rect = svg.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return null
+    const viewX = ((event.clientX - rect.left) / rect.width) * viewBoxWidth.value
+    const viewY = ((event.clientY - rect.top) / rect.height) * viewBoxHeight.value
+    return viewBoxToCourt(viewX, viewY, props.vertical)
 }
 
 const dragging = ref<'you' | 'opponent' | null>(null)
 
 function startDrag(who: 'you' | 'opponent', event: PointerEvent) {
+    event.preventDefault()
+    event.stopPropagation()
     dragging.value = who
     svgRef.value?.setPointerCapture(event.pointerId)
 }
@@ -150,6 +227,7 @@ function onPointerMove(event: PointerEvent) {
     if (!point) return
 
     if (dragging.value) {
+        event.preventDefault()
         movePlayer(dragging.value, point)
         aim.value = null
         return
@@ -180,15 +258,24 @@ function onPointerLeave() {
 const MARKER_KEY_STEP_M = 0.25
 const MARKER_KEY_STEP_SHIFT_M = 1
 
-const KEY_DIRECTIONS: Record<string, CourtPoint> = {
-    ArrowLeft: { x: -1, y: 0 },
-    ArrowRight: { x: 1, y: 0 },
-    ArrowUp: { x: 0, y: -1 },
-    ArrowDown: { x: 0, y: 1 },
-}
+const KEY_DIRECTIONS = computed<Record<string, CourtPoint>>(() =>
+    props.vertical
+        ? {
+            ArrowLeft: { x: 0, y: -1 },
+            ArrowRight: { x: 0, y: 1 },
+            ArrowUp: { x: 1, y: 0 },
+            ArrowDown: { x: -1, y: 0 },
+        }
+        : {
+            ArrowLeft: { x: -1, y: 0 },
+            ArrowRight: { x: 1, y: 0 },
+            ArrowUp: { x: 0, y: -1 },
+            ArrowDown: { x: 0, y: 1 },
+        },
+)
 
 function nudge(who: 'you' | 'opponent', event: KeyboardEvent) {
-    const direction = KEY_DIRECTIONS[event.key]
+    const direction = KEY_DIRECTIONS.value[event.key]
     if (!direction) return
     // otherwise the arrow keys also scroll the column
     event.preventDefault()
@@ -219,14 +306,67 @@ const hoverResult = computed(() => {
 const tooltipStyle = computed(() => {
     const point = aim.value
     if (!point) return {}
+    const view = toView(point)
     return {
-        left: `${((courtX + point.x) / WHOLE_COURT_LENGTH_M) * 100}%`,
-        top: `${((courtY + point.y) / WHOLE_COURT_WIDTH_M) * 100}%`,
+        left: `${(view.x / viewBoxWidth.value) * 100}%`,
+        top: `${(view.y / viewBoxHeight.value) * 100}%`,
     }
 })
 
-const tooltipFlipX = computed(() => aim.value !== null && courtX + aim.value.x > WHOLE_COURT_LENGTH_M * 0.75)
-const tooltipFlipY = computed(() => aim.value !== null && courtY + aim.value.y > WHOLE_COURT_WIDTH_M * 0.7)
+const tooltipFlipX = computed(() => {
+    if (!aim.value) return false
+    return toView(aim.value).x > viewBoxWidth.value * 0.75
+})
+const tooltipFlipY = computed(() => {
+    if (!aim.value) return false
+    return toView(aim.value).y > viewBoxHeight.value * 0.7
+})
+
+const labelLift = playerMarkerOutlineRadiusDragging + playerMarkerLabelGap
+const youLabel = computed(() => {
+    const view = toView(props.you)
+    return { x: view.x, y: view.y - labelLift }
+})
+const opponentLabel = computed(() => {
+    const view = toView(props.opponent)
+    return { x: view.x, y: view.y - labelLift }
+})
+const targetLabel = computed(() => {
+    const view = toView(props.target)
+    const width = 2.6
+    const x = props.vertical
+        ? Math.max(0.15, view.x - targetDiamondSize / Math.SQRT2 - playerMarkerLabelGap - width)
+        : view.x + targetDiamondSize / Math.SQRT2 + playerMarkerLabelGap
+    return { x, y: view.y, width }
+})
+const recommendedLabel = computed(() => {
+    if (!props.recommendedAim) return null
+    const view = toView(props.recommendedAim)
+    const width = 2.8
+    const x = props.vertical
+        ? Math.max(0.15, view.x - recommendedRingRadius - playerMarkerLabelGap - width)
+        : view.x + recommendedRingRadius + playerMarkerLabelGap
+    return { x, y: view.y, width }
+})
+const alternativeLabelPos = computed(() => {
+    if (!props.alternativeAim) return null
+    const view = toView(props.alternativeAim)
+    const width = alternativeLabelWidth.value
+    const x = props.vertical
+        ? Math.max(0.15, view.x - recommendedRingRadius - playerMarkerLabelGap - width)
+        : view.x + recommendedRingRadius + playerMarkerLabelGap
+    return { x, y: view.y, width }
+})
+const yourSideLabel = computed(() =>
+    props.vertical
+        ? { x: 0.8, y: WHOLE_COURT_LENGTH_M - 0.8, anchor: 'start' }
+        : { x: 0.8, y: 0.8, anchor: 'start' },
+)
+const opponentSideLabel = computed(() =>
+    props.vertical
+        ? { x: 0.8, y: 0.8, anchor: 'start' }
+        : { x: WHOLE_COURT_LENGTH_M - 0.8, y: 0.8, anchor: 'end' },
+)
 
 function percent(fraction: number) {
     return Math.round(fraction * 100)
@@ -258,8 +398,8 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
 <template>
     <div class="tennis-court">
         <svg :class="{ 'is-dragging': dragging !== null, 'is-aiming': aim !== null }" ref="svgRef"
-            :viewBox="`0 0 ${WHOLE_COURT_LENGTH_M} ${WHOLE_COURT_WIDTH_M}`" @pointermove="onPointerMove($event)"
-            @pointerup="endDrag" @pointerleave="onPointerLeave">
+            :viewBox="`0 0 ${viewBoxWidth} ${viewBoxHeight}`" @pointermove="onPointerMove($event)"
+            @pointerup="endDrag" @pointercancel="endDrag" @pointerleave="onPointerLeave">
             <defs>
                 <pattern id="grass-stripes" patternUnits="userSpaceOnUse" width="3" height="1">
                     <rect width="1.5" height="1" fill="var(--court-grass-stripe-1)" />
@@ -274,6 +414,7 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 </filter>
             </defs>
 
+            <g :transform="courtTransform">
             <!-- Green or colored margin around the court -->
             <rect @pointerdown="placeTarget($event)" :width="WHOLE_COURT_LENGTH_M" :height="WHOLE_COURT_WIDTH_M"
                 :fill="surface === 'grass' ? 'url(#grass-stripes)' : `var(--court-surround-${surface})`" />
@@ -281,6 +422,10 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
             <rect @pointerdown="placeTarget($event)" :x="courtX" :y="courtY" :width="COURT_SURFACE_LENGTH_M"
                 :height="COURT_SURFACE_WIDTH_M" :fill="surface === 'grass' ? 'none' : `var(--court-surface-${surface})`"
                 stroke="var(--court-line)" :stroke-width="lineWidth" />
+            <g v-if="showHeatmap" :opacity="overlayOpacity" pointer-events="none">
+                <rect v-for="(cell, index) in heatmapCells" :key="index" :x="cell.x" :y="cell.y" :width="cellW"
+                    :height="cellH" :fill="heatmapFill(cell.t)" />
+            </g>
             <!-- Net shadow, on the opponent's side of the net -->
             <rect :x="netX + lineWidth / 2" :y="courtY" :width="netShadeWidth" :height="COURT_SURFACE_WIDTH_M"
                 fill="url(#net-shade)" />
@@ -301,12 +446,11 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
             <circle :cx="netX" :cy="netTop" :r="netPostRadius" fill="var(--court-line)" />
             <circle :cx="netX" :cy="netBottom" :r="netPostRadius" fill="var(--court-line)" />
             <line :x1="netX" :y1="netTop" :x2="netX" :y2="netBottom" stroke="var(--court-line)" :stroke-width="lineWidth" />
-            <!-- Side names in the top margin -->
-            <text fill="var(--court-side-label-color)" class="side-label" x="0.8" y="0.8" text-anchor="start"
-                dominant-baseline="middle" font-size="0.38">YOUR
-                SIDE</text>
-            <text fill="var(--court-side-label-color)" class="side-label" :x="courtRight + RUNOFF_M - 0.8" y="0.8"
-                text-anchor="end" dominant-baseline="middle" font-size="0.38">OPPONENT'S SIDE</text>
+            <g v-if="showLandings" :opacity="overlayOpacity" pointer-events="none">
+                <circle v-for="(landing, index) in simulatedLandings" :key="index" :cx="courtX + landing.point.x"
+                    :cy="courtY + landing.point.y" r="0.12" :fill="landingColor[landing.kind]"
+                    :opacity="landing.kind === 'in' ? 0.9 : 0.85" />
+            </g>
             <g :opacity="shotOpacity" pointer-events="none">
                 <!-- Dispersion ellipse around the shown shot -->
                 <g v-if="showDispersion" :transform="`rotate(${shotAngle} ${courtX + shotAim.x} ${courtY + shotAim.y})`">
@@ -330,25 +474,20 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 fill="var(--court-target-color)" stroke="#111" stroke-width="0.07" transform="rotate(45)"
                 :transform-origin="`${courtX + target.x} ${courtY + target.y}`" pointer-events="none" />
 
-            <!-- Target label -->
-            <g :transform="`translate(${courtX + target.x + targetDiamondSize / Math.SQRT2 + playerMarkerLabelGap} ${courtY + target.y})`"
-                pointer-events="none">
-                <rect x="0" y="-0.28" width="2.6" height="0.56" rx="0.12" fill="#111" fill-opacity="0.8" />
-                <text x="1.3" font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central"
-                    font-size="0.3" font-weight="700" fill="var(--court-target-color)">Your target</text>
-            </g>
-
-            <!-- Recommended aim: ring with a dot, then the label to the right -->
+            <!-- Recommended aim: ring with a dot -->
             <g v-if="recommendedAim" :opacity="isStale ? 0.5 : 1" pointer-events="none"
                 :transform="`translate(${courtX + recommendedAim.x} ${courtY + recommendedAim.y})`">
                 <circle :r="recommendedRingRadius" fill="rgba(0, 0, 0, 0.35)" :stroke="recommendedColor"
                     stroke-width="0.08" />
                 <circle :r="recommendedDotRadius" :fill="recommendedColor" />
-                <g :transform="`translate(${recommendedRingRadius + playerMarkerLabelGap} 0)`">
-                    <rect x="0" y="-0.28" width="2.8" height="0.56" rx="0.28" :fill="recommendedColor" />
-                    <text x="1.4" font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central"
-                        font-size="0.3" font-weight="700" fill="#0b1a10">Recommended</text>
-                </g>
+            </g>
+
+            <!-- Alternative aim: white ring with a dot -->
+            <g v-if="shownShot === 'alternative' && alternativeAim" :opacity="isStale ? 0.5 : 1" pointer-events="none"
+                :transform="`translate(${courtX + alternativeAim.x} ${courtY + alternativeAim.y})`">
+                <circle :r="recommendedRingRadius" fill="rgba(0, 0, 0, 0.35)" :stroke="alternativeColor"
+                    stroke-width="0.08" />
+                <circle :r="recommendedDotRadius" :fill="alternativeColor" />
             </g>
 
             <!-- You: marker, then the label above it -->
@@ -363,12 +502,6 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 <circle :cx="courtX + you.x" :cy="courtY + you.y" :r="playerMarkerDotRadius"
                     fill="var(--player-marker-you-dot-color)" />
             </g>
-            <g
-                :transform="`translate(${courtX + you.x} ${courtY + you.y - playerMarkerOutlineRadiusDragging - playerMarkerLabelGap})`">
-                <rect x="-0.7" y="-0.28" width="1.4" height="0.56" rx="0.28" fill="var(--player-marker-you-dot-color)" />
-                <text font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
-                    font-weight="700" fill="var(--text-color-tertiary)">YOU</text>
-            </g>
             <!-- Opponent: marker, then the label above it -->
             <g :class="{ 'player-marker': true, 'is-dragging': dragging === 'opponent' }" tabindex="0"
                 role="button" aria-roledescription="movable marker"
@@ -382,13 +515,6 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 <circle :cx="courtX + opponent.x" :cy="courtY + opponent.y" :r="playerMarkerDotRadius"
                     fill="var(--player-marker-opponent-dot-color)" />
             </g>
-            <g
-                :transform="`translate(${courtX + opponent.x} ${courtY + opponent.y - playerMarkerOutlineRadiusDragging - playerMarkerLabelGap})`">
-                <rect x="-1.3" y="-0.28" width="2.6" height="0.56" rx="0.28"
-                    fill="var(--player-marker-opponent-dot-color)" />
-                <text font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
-                    font-weight="700" fill="var(--text-color-tertiary)">OPPONENT</text>
-            </g>
 
             <!-- Aim -->
             <g v-if="aim" pointer-events="none">
@@ -398,6 +524,50 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                     stroke="#fff" stroke-width="0.03" />
                 <line :x1="courtX + aim.x" :y1="courtY + aim.y - 0.28" :x2="courtX + aim.x" :y2="courtY + aim.y + 0.28"
                     stroke="#fff" stroke-width="0.03" />
+            </g>
+            </g>
+
+            <text fill="var(--court-side-label-color)" class="side-label" :x="yourSideLabel.x" :y="yourSideLabel.y"
+                :text-anchor="yourSideLabel.anchor" dominant-baseline="middle" font-size="0.38">YOUR SIDE</text>
+            <text fill="var(--court-side-label-color)" class="side-label" :x="opponentSideLabel.x"
+                :y="opponentSideLabel.y" :text-anchor="opponentSideLabel.anchor" dominant-baseline="middle"
+                font-size="0.38">OPPONENT'S SIDE</text>
+
+            <g :transform="`translate(${youLabel.x} ${youLabel.y})`" pointer-events="none">
+                <rect x="-0.7" y="-0.28" width="1.4" height="0.56" rx="0.28" fill="var(--player-marker-you-dot-color)" />
+                <text font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
+                    font-weight="700" fill="var(--text-color-tertiary)">YOU</text>
+            </g>
+            <g :transform="`translate(${opponentLabel.x} ${opponentLabel.y})`" pointer-events="none">
+                <rect x="-1.3" y="-0.28" width="2.6" height="0.56" rx="0.28"
+                    fill="var(--player-marker-opponent-dot-color)" />
+                <text font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
+                    font-weight="700" fill="var(--text-color-tertiary)">OPPONENT</text>
+            </g>
+
+            <g :transform="`translate(${targetLabel.x} ${targetLabel.y})`" pointer-events="none">
+                <rect x="0" y="-0.28" :width="targetLabel.width" height="0.56" rx="0.12" fill="#111"
+                    fill-opacity="0.8" />
+                <text :x="targetLabel.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
+                    dominant-baseline="central" font-size="0.3" font-weight="700"
+                    fill="var(--court-target-color)">Your target</text>
+            </g>
+
+            <g v-if="recommendedAim && recommendedLabel" :opacity="isStale ? 0.5 : 1" pointer-events="none"
+                :transform="`translate(${recommendedLabel.x} ${recommendedLabel.y})`">
+                <rect x="0" y="-0.28" :width="recommendedLabel.width" height="0.56" rx="0.28"
+                    :fill="recommendedColor" />
+                <text :x="recommendedLabel.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
+                    dominant-baseline="central" font-size="0.3" font-weight="700" fill="#0b1a10">Recommended</text>
+            </g>
+
+            <g v-if="shownShot === 'alternative' && alternativeLabelPos" :opacity="isStale ? 0.5 : 1"
+                pointer-events="none" :transform="`translate(${alternativeLabelPos.x} ${alternativeLabelPos.y})`">
+                <rect x="0" y="-0.28" :width="alternativeLabelPos.width" height="0.56" rx="0.12" fill="#111"
+                    fill-opacity="0.8" />
+                <text :x="alternativeLabelPos.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
+                    dominant-baseline="central" font-size="0.3" font-weight="700" :fill="alternativeColor">{{
+                        alternativeLabel }}</text>
             </g>
         </svg>
 
@@ -468,6 +638,7 @@ svg {
     height: auto;
     display: block;
     border-radius: var(--border-radius);
+    touch-action: none;
 
     &.is-aiming {
         cursor: none;

@@ -4,6 +4,7 @@ import IconInfo from '@/assets/icons/icon-info.vue'
 import { metresInsideSideline, metresPastNet, metresRightOfCenter, targetLabel } from '@/math/describeTarget'
 import { distance, type CourtPoint } from '@/math/point'
 import type { ShotOutcome } from '@/math/simulation'
+import { formatPercent } from '@/utils/formatPercent'
 
 const props = withDefaults(defineProps<{
     heading: string
@@ -46,9 +47,9 @@ function percent(fraction: number) {
 }
 
 const rows = computed(() => [
-    { id: 'in', label: 'Lands in', value: props.outcome.pIn },
-    { id: 'return', label: 'Opponent gets it back (if in)', value: props.outcome.pReturnGivenIn },
-    { id: 'win', label: 'Wins the point', value: props.outcome.pWin },
+    { id: 'in', label: 'Lands in', shortLabel: 'Lands in', value: props.outcome.pIn },
+    { id: 'return', label: 'Opponent gets it back (if in)', shortLabel: 'Opponent gets it back', value: props.outcome.pReturnGivenIn },
+    { id: 'win', label: 'Wins the point', shortLabel: 'Wins outright', value: props.outcome.pWin },
 ])
 </script>
 
@@ -71,8 +72,9 @@ const rows = computed(() => [
         <div class="rows">
             <div v-for="row in rows" :key="row.id" class="row" :class="`row-${row.id}`">
                 <div class="row-heading">
-                    <span>{{ row.label }}</span>
-                    <span class="value">{{ row.value === null ? '—' : `${percent(row.value)}%` }}</span>
+                    <span class="label-full">{{ row.label }}</span>
+                    <span class="label-short">{{ row.shortLabel }}</span>
+                    <span class="value">{{ row.value === null ? '—' : formatPercent(row.value) }}</span>
                 </div>
                 <div class="bar">
                     <div class="bar-fill" :style="{ width: `${row.value === null ? 0 : percent(row.value)}%` }" />
@@ -89,6 +91,8 @@ const rows = computed(() => [
 </template>
 
 <style scoped lang="scss">
+@use '../styles/breakpoints' as *;
+
 .shot-result-card {
     --result-in-color: var(--text-color-primary);
     --result-return-color: #f0a070;
@@ -210,6 +214,10 @@ const rows = computed(() => [
                 font-size: 1.6rem;
                 font-weight: 500;
             }
+
+            .label-short {
+                display: none;
+            }
         }
 
         .bar {
@@ -267,6 +275,62 @@ const rows = computed(() => [
         .note-icon {
             flex: none;
             margin-top: 0.1rem;
+        }
+    }
+}
+
+@media (max-width: $layout-wide) {
+    .shot-result-card {
+        padding: 1.4rem 1.4rem 1.2rem;
+
+        .heading {
+            .on-court,
+            .show-on-court {
+                display: none;
+            }
+        }
+
+        .title h2 {
+            font-size: 1.7rem;
+        }
+
+        .rows {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.8rem;
+            margin-top: 1.2rem;
+            padding: 1.2rem 0.6rem;
+
+            .row-heading {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                gap: 0.4rem;
+                margin-bottom: 0;
+
+                .label-full {
+                    display: none;
+                }
+
+                .label-short {
+                    display: block;
+                    order: 2;
+                    color: var(--text-color-secondary);
+                    font-size: 1rem;
+                    font-weight: 500;
+                    line-height: 1.3;
+                }
+
+                .value {
+                    order: 1;
+                    font-size: 2rem;
+                    font-weight: 700;
+                }
+            }
+
+            .bar {
+                display: none;
+            }
         }
     }
 }
