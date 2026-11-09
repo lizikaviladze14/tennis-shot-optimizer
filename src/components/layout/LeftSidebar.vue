@@ -133,15 +133,15 @@ const opponentDescription = computed(() => describePlayerPosition('opponent', pr
                         </div>
                     </div>
                 </div>
-                <p class="hint">Drag the markers on the court. With a marker focused, the arrow keys move it 25 cm.</p>
+                <p class="hint">Drag the markers on the court. With a marker focused, the arrow keys move it 25 cm, Shift + arrows 1 m.</p>
             </div>
         </section>
 
         <section class="shot-accuracy">
             <div class="content-wrapper">
                 <h3>Your shot</h3>
-                <SegmentedControl :options="accuracyLevels" :model-value="shotAccuracy.level"
-                    ariaLabel="Shot accuracy" @update:model-value="emit('selectAccuracy', $event)" />
+                <SegmentedControl :options="accuracyLevels" :model-value="shotAccuracy.level" ariaLabel="Shot accuracy"
+                    @update:model-value="emit('selectAccuracy', $event)" />
                 <div class="spread">
                     <div class="spread-mark" aria-hidden="true">
                         <svg viewBox="0 0 72 72">
@@ -217,8 +217,8 @@ const opponentDescription = computed(() => describePlayerPosition('opponent', pr
             <div class="content-wrapper">
                 <h3>Simulation</h3>
                 <div class="control-label">Risk preference</div>
-                <SegmentedControl :options="riskPreferences" :model-value="riskPreference"
-                    ariaLabel="Risk preference" @update:model-value="emit('selectRiskPreference', $event)" />
+                <SegmentedControl :options="riskPreferences" :model-value="riskPreference" ariaLabel="Risk preference"
+                    @update:model-value="emit('selectRiskPreference', $event)" />
                 <p class="hint">{{ riskDescription }}</p>
             </div>
         </section>
@@ -229,6 +229,10 @@ const opponentDescription = computed(() => describePlayerPosition('opponent', pr
 .left-sidebar {
     width: 27rem;
     flex: none;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #2a3340 transparent;
     background-color: var(--layout-bg-color);
     border: 1px solid var(--layout-border-color);
     border-radius: var(--border-radius);

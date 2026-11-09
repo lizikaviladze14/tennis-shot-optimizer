@@ -1,23 +1,28 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import IconInfo from '@/assets/icons/icon-info.vue'
-import { metresInsideSideline, metresPastNet, metresRightOfCenter, targetZone, zoneLabel } from '@/math/describeTarget'
+import { metresInsideSideline, metresPastNet, metresRightOfCenter, targetLabel } from '@/math/describeTarget'
 import { distance, type CourtPoint } from '@/math/point'
 import type { ShotOutcome } from '@/math/simulation'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     heading: string
     aim: CourtPoint
     opponent: CourtPoint
     outcome: ShotOutcome
     coverageM: number
-}>()
+    accentColor?: string
+    isActive?: boolean
+}>(), {
+    accentColor: 'var(--text-color-primary)',
+    isActive: false,
+})
 
 const emit = defineEmits<{
     showOnCourt: []
 }>()
 
-const title = computed(() => zoneLabel(targetZone(props.aim)))
+const title = computed(() => targetLabel(props.aim))
 
 const position = computed(() => {
     const pastNet = `${metresPastNet(props.aim).toFixed(1)} m past net`
@@ -48,10 +53,11 @@ const rows = computed(() => [
 </script>
 
 <template>
-    <div class="shot-result-card">
+    <div class="shot-result-card" :class="{ 'is-active': isActive }" :style="{ '--card-accent': accentColor }">
         <div class="heading">
             <h3>{{ heading }}</h3>
-            <button type="button" class="show-on-court" @click="emit('showOnCourt')">Show on court</button>
+            <span v-if="isActive" class="on-court">On court</span>
+            <button v-else type="button" class="show-on-court" @click="emit('showOnCourt')">Show on court</button>
         </div>
 
         <div class="title">
@@ -90,6 +96,15 @@ const rows = computed(() => [
 
     padding: 1.6rem;
 
+    &.is-active {
+        background: color-mix(in srgb, var(--card-accent) 5%, transparent);
+        box-shadow: inset 0.3rem 0 0 var(--card-accent);
+
+        .heading h3 {
+            color: var(--card-accent);
+        }
+    }
+
     .heading {
         display: flex;
         align-items: center;
@@ -101,6 +116,16 @@ const rows = computed(() => [
             font-weight: 600;
             letter-spacing: 0.12em;
             text-transform: uppercase;
+        }
+
+        .on-court {
+            padding: 0.5rem 1rem;
+            border: 1px solid color-mix(in srgb, var(--card-accent) 45%, transparent);
+            border-radius: 10px;
+            background: color-mix(in srgb, var(--card-accent) 12%, transparent);
+            color: var(--card-accent);
+            font-size: 1.2rem;
+            font-weight: 600;
         }
 
         .show-on-court {

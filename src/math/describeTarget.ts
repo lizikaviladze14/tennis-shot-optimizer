@@ -8,6 +8,7 @@ import {
   SINGLES_RIGHT_Y_M,
 } from './courtGeometry'
 import type { CourtPoint } from './point'
+import { isPointInCourt } from './shotScore'
 
 export type TargetZone = {
   depth: 'short' | 'mid' | 'deep'
@@ -54,4 +55,18 @@ export function targetZone(aim: CourtPoint): TargetZone {
 
 export function zoneLabel(zone: TargetZone): string {
   return `${zone.depth.charAt(0).toUpperCase()}${zone.depth.slice(1)} · ${zone.lateral}`
+}
+
+/**
+ * Card title for an aim: the zone label when it's inside the singles court,
+ * otherwise why it's out, e.g. "Out · long and wide right".
+ * Left and right are the hitter's own.
+ */
+export function targetLabel(aim: CourtPoint): string {
+  if (isPointInCourt(aim)) return zoneLabel(targetZone(aim))
+  const reasons: string[] = []
+  if (aim.x > COURT_SURFACE_LENGTH_M) reasons.push('long')
+  if (aim.y < SINGLES_LEFT_Y_M) reasons.push('wide left')
+  else if (aim.y > SINGLES_RIGHT_Y_M) reasons.push('wide right')
+  return reasons.length > 0 ? `Out · ${reasons.join(' and ')}` : 'Out'
 }

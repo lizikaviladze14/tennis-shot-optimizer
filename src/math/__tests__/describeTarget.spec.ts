@@ -5,6 +5,7 @@ import {
   metresInsideSideline,
   metresPastNet,
   metresRightOfCenter,
+  targetLabel,
   targetZone,
   zoneLabel,
 } from '../describeTarget'
@@ -94,5 +95,34 @@ describe('zoneLabel', () => {
 
   it('labels the design example', () => {
     expect(zoneLabel(targetZone({ x: NET_X_M + 3.4, y: c + 1.8 }))).toBe('Short · right channel')
+  })
+})
+
+describe('targetLabel', () => {
+  const rightSideline = COURT_SURFACE_WIDTH_M - SINGLES_ALLEY_M
+
+  it('uses the zone label inside the singles court', () => {
+    expect(targetLabel({ x: NET_X_M + 3.4, y: c + 1.8 })).toBe('Short · right channel')
+  })
+
+  it('counts the lines as in', () => {
+    expect(targetLabel({ x: COURT_SURFACE_LENGTH_M, y: rightSideline })).toBe('Deep · right channel')
+  })
+
+  it('labels a ball past the baseline as long', () => {
+    expect(targetLabel({ x: COURT_SURFACE_LENGTH_M + 0.5, y: c })).toBe('Out · long')
+  })
+
+  it('labels a ball past a singles sideline as wide, using the hitter left and right', () => {
+    expect(targetLabel({ x: 18, y: SINGLES_ALLEY_M - 0.5 })).toBe('Out · wide left')
+    expect(targetLabel({ x: 18, y: rightSideline + 0.5 })).toBe('Out · wide right')
+  })
+
+  it('counts the doubles alley as out', () => {
+    expect(targetLabel({ x: 18, y: rightSideline + SINGLES_ALLEY_M / 2 })).toBe('Out · wide right')
+  })
+
+  it('combines long and wide', () => {
+    expect(targetLabel({ x: COURT_SURFACE_LENGTH_M + 1, y: rightSideline + 1 })).toBe('Out · long and wide right')
   })
 })
