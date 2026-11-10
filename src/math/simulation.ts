@@ -36,21 +36,32 @@ export type ShotOutcome = {
   pRallyWinSE: number
 }
 
+/** Ball speed and bounce for a shot aimed at `aim`, after the depth-speed
+    adjustment. Used by the model and the animation so they can't disagree. */
+export function aimShotSettings(
+  scenario: ShotScenario,
+  aim: CourtPoint,
+): { ballSpeedMps: number; bounce: BounceSettings } {
+  const factor = depthSpeedFactor(metresPastNet(aim), scenario.depthSpeed)
+  return {
+    ballSpeedMps: scenario.shot.ballSpeedMps * factor,
+    bounce: {
+      ...scenario.bounce,
+      afterBounceSpeedMps: scenario.bounce.afterBounceSpeedMps * factor,
+    },
+  }
+}
+
 /** The opponent's best interception for a shot that lands exactly on the aim. */
 export function aimInterception(scenario: ShotScenario, aim: CourtPoint): Interception {
-  const factor = depthSpeedFactor(metresPastNet(aim), scenario.depthSpeed)
-  const aimBallSpeed = scenario.shot.ballSpeedMps * factor
-  const aimBounce = {
-    ...scenario.bounce,
-    afterBounceSpeedMps: scenario.bounce.afterBounceSpeedMps * factor,
-  }
+  const { ballSpeedMps, bounce } = aimShotSettings(scenario, aim)
   return bestInterception(
     scenario.hitter,
     scenario.opponent,
     aim,
-    aimBallSpeed,
+    ballSpeedMps,
     scenario.opponentSkill.runSpeedMps,
-    aimBounce,
+    bounce,
   )
 }
 
@@ -74,12 +85,7 @@ export function estimateShotOutcome(
   }
 
   const { hitter, opponent, shot, opponentSkill } = scenario
-  const factor = depthSpeedFactor(metresPastNet(aim), scenario.depthSpeed)
-  const aimBallSpeed = shot.ballSpeedMps * factor
-  const aimBounce = {
-    ...scenario.bounce,
-    afterBounceSpeedMps: scenario.bounce.afterBounceSpeedMps * factor,
-  }
+  const { ballSpeedMps: aimBallSpeed, bounce: aimBounce } = aimShotSettings(scenario, aim)
   let inCount = 0
   let returnSum = 0
   const winContributions: number[] = []

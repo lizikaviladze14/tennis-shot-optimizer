@@ -11,7 +11,9 @@ import { DEFAULT_YOU, DEFAULT_OPPONENT } from '@/math/playerPosition'
 import type { CourtPoint } from '@/math/point'
 import { CENTER_SERVICE_Y_M } from '@/math/courtGeometry'
 import { metresPastNet } from '@/math/describeTarget'
-import { aimInterception, estimateShotOutcome, type ShotScenario } from '@/math/simulation'
+import { aimInterception, aimShotSettings, estimateShotOutcome, type ShotScenario } from '@/math/simulation'
+import { createBallPath } from '@/animation/ballPath'
+import { useShotAnimation } from '@/composables/useShotAnimation'
 import { createDraws, mulberry32 } from '@/math/random'
 import { SHOT_ACCURACY_PRESETS, type ShotAccuracy, type ShotAccuracyLevel } from '@/types/shotAccuracy'
 import { OPPONENT_SKILL_PRESETS, type OpponentSkill, type OpponentSkillLevel } from '@/types/opponentSkill'
@@ -176,6 +178,35 @@ const courtShot = computed(() => {
   return 'target'
 })
 
+const { ballState, isPlaying, progress, bouncePoint, play, stop } = useShotAnimation()
+const playerDragging = ref(false)
+
+const shownAim = computed(() => {
+  if (shownShot.value === 'recommended' && recommendation.value) return recommendation.value.best.aim
+  if (alternative.value) return alternative.value.aim
+  return target.value
+})
+
+let settingsReplayTimer: ReturnType<typeof setTimeout> | null = null
+
+function playShownShot() {
+  if (playerDragging.value) return
+  const aim = shownAim.value
+  if (!aim) return
+  if (shownShot.value === 'recommended' && isStale.value) return
+  const { ballSpeedMps, bounce } = aimShotSettings(scenario.value, aim)
+  play(createBallPath(you.value, aim, ballSpeedMps, bounce))
+}
+
+function onDragStart() {
+  playerDragging.value = true
+}
+
+function onDragEnd() {
+  playerDragging.value = false
+  if (shownShot.value === 'target') playShownShot()
+}
+
 const recommendedLandings = computed(() =>
   recommendation.value
     ? simulatedLandings(you.value, recommendation.value.best.aim, effectiveShot.value, draws.value)
@@ -190,6 +221,7 @@ function showOnCourt(shot: ShownShot) {
   const isRecommended =
     (shot === 'safest' && safest.value === best) || (shot === 'highestWin' && highestWin.value === best)
   shownShot.value = isRecommended ? 'recommended' : shot
+  if (!(isStale.value && shot !== 'target')) playShownShot()
 }
 
 const recommendedInterception = computed(() =>
@@ -238,6 +270,7 @@ async function calculateRecommendation() {
   isStale.value = false
   shownShot.value = 'recommended'
   isCalculating.value = false
+  playShownShot()
 }
 
 function resetPositions() {
@@ -251,7 +284,19 @@ watch([scenario, riskPreference, shotsPerTarget, modelLevel, shotType], () => {
 
 watch(target, () => {
   shownShot.value = 'target'
+  playShownShot()
 })
+
+// Sliders, level, shot type, model level and opponent settings: replay your
+// target once the controls have settled. Player drags replay on pointerup.
+watch([shotAccuracy, opponentSkill, modelLevel, shotType], () => {
+  if (shownShot.value !== 'target') return
+  if (settingsReplayTimer !== null) clearTimeout(settingsReplayTimer)
+  settingsReplayTimer = setTimeout(() => {
+    settingsReplayTimer = null
+    if (shownShot.value === 'target') playShownShot()
+  }, 400)
+}, { deep: true })
 
 const NARROW_QUERY = '(max-width: 70em)'
 const setupOpen = ref(false)
@@ -311,6 +356,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (settingsReplayTimer !== null) clearTimeout(settingsReplayTimer)
   narrowQuery?.removeEventListener('change', syncNarrow)
   window.removeEventListener('keydown', onWindowKeydown)
 })
@@ -404,9 +450,11 @@ onUnmounted(() => {
             :show-heatmap="showHeatmap" :show-landings="showLandings" @update:you="you = $event"
             @update:opponent="opponent = $event" :recommended-aim="recommendation?.best.aim" :is-stale="isStale"
             :shown-shot="courtShot" :alternative-aim="alternative?.aim" :alternative-label="alternative?.label"
-            :aim-results="recommendation?.results" :simulated-landings="recommendedLandings" :vertical="isNarrow" />
+            :aim-results="recommendation?.results" :simulated-landings="recommendedLandings" :vertical="isNarrow"
+            :ball-state="ballState" :bounce-point="bouncePoint" @drag-start="onDragStart" @drag-end="onDragEnd" />
           <CourtControls v-model:show-dispersion="showDispersion" v-model:show-trajectory="showTrajectory"
-            v-model:show-heatmap="showHeatmap" v-model:show-landings="showLandings" />
+            v-model:show-heatmap="showHeatmap" v-model:show-landings="showLandings" :is-playing="isPlaying"
+            :progress="progress" @play="playShownShot" @stop="stop" />
         </div>
         <ModelAnalytics ref="analyticsPanel" :recommended-landings="recommendedLandings"
           :recommended-landing-counts="recommendedLandingCounts" :results="recommendation?.results ?? []"

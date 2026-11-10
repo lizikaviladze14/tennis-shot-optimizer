@@ -15,7 +15,8 @@ import {
     CENTER_MARK_LENGTH_M,
 } from '@/math/courtGeometry'
 import type { TennisCourtSurface } from '@/types/tennisCourt'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import type { BallState } from '@/animation/ballPath'
 import { isOnOpponentHalf, isPointInCourt } from '@/math/shotScore'
 import { SHOT_ACCURACY_PRESETS, type ShotAccuracy } from '@/types/shotAccuracy'
 import { DEFAULT_YOU, DEFAULT_OPPONENT } from '@/math/playerPosition'
@@ -44,6 +45,8 @@ interface Props {
     aimResults?: AimResult[]
     simulatedLandings?: { point: CourtPoint; kind: LandingKind }[]
     vertical?: boolean
+    ballState?: BallState | null
+    bouncePoint?: CourtPoint | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -67,12 +70,16 @@ const props = withDefaults(defineProps<Props>(), {
     aimResults: undefined,
     simulatedLandings: () => [],
     vertical: false,
+    ballState: null,
+    bouncePoint: null,
 })
 
 const emit = defineEmits<{
     'update:you': [point: CourtPoint]
     'update:opponent': [point: CourtPoint]
     'update:target': [point: CourtPoint]
+    dragStart: []
+    dragEnd: []
 }>()
 
 const aim = ref<CourtPoint | null>(null)
@@ -163,6 +170,33 @@ const landingColor: Record<LandingKind, string> = {
     netShort: '#e88980',
 }
 
+const ballShadowRx = 0.14
+const ballShadowRy = 0.09
+const ballColor = 'var(--court-ball-color)'
+
+const ballDraw = computed(() => {
+    const state = props.ballState
+    if (!state) return null
+    // height lifts the ball toward the top of the screen: -y on the landscape
+    // court, +x once the portrait court is rotated
+    const lift = state.heightM * 0.5
+    return {
+        shadowX: courtX + state.position.x,
+        shadowY: courtY + state.position.y,
+        x: courtX + state.position.x + (props.vertical ? lift : 0),
+        y: courtY + state.position.y - (props.vertical ? 0 : lift),
+        radius: ballShadowRx * (1 + 0.12 * state.heightM),
+    }
+})
+
+const bounceKey = ref(0)
+watch(
+    () => props.bouncePoint,
+    (point) => {
+        if (point) bounceKey.value += 1
+    },
+)
+
 const shotAngle = computed(() => {
     const dx = shotAim.value.x - props.you.x
     const dy = shotAim.value.y - props.you.y
@@ -198,6 +232,7 @@ function startDrag(who: 'you' | 'opponent', event: PointerEvent) {
     event.stopPropagation()
     dragging.value = who
     svgRef.value?.setPointerCapture(event.pointerId)
+    emit('dragStart')
 }
 
 const aimOnOpponentSide = ref(false)
@@ -227,7 +262,9 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function endDrag() {
+    if (dragging.value === null) return
     dragging.value = null
+    emit('dragEnd')
 }
 
 function onPointerLeave() {
@@ -311,31 +348,64 @@ const opponentLabel = computed(() => {
     const view = toView(props.opponent)
     return { x: view.x, y: view.y - labelLift }
 })
-const targetLabel = computed(() => {
-    const view = toView(props.target)
-    const width = 2.6
-    const x = props.vertical
-        ? Math.max(0.15, view.x - targetDiamondSize / Math.SQRT2 - playerMarkerLabelGap - width)
-        : view.x + targetDiamondSize / Math.SQRT2 + playerMarkerLabelGap
-    return { x, y: view.y, width }
-})
-const recommendedLabel = computed(() => {
-    if (!props.recommendedAim) return null
-    const view = toView(props.recommendedAim)
-    const width = 2.8
-    const x = props.vertical
-        ? Math.max(0.15, view.x - recommendedRingRadius - playerMarkerLabelGap - width)
-        : view.x + recommendedRingRadius + playerMarkerLabelGap
-    return { x, y: view.y, width }
-})
-const alternativeLabelPos = computed(() => {
-    if (!props.alternativeAim) return null
-    const view = toView(props.alternativeAim)
-    const width = alternativeLabelWidth.value
-    const x = props.vertical
-        ? Math.max(0.15, view.x - recommendedRingRadius - playerMarkerLabelGap - width)
-        : view.x + recommendedRingRadius + playerMarkerLabelGap
-    return { x, y: view.y, width }
+
+const aimChipHeight = 0.56
+const aimChipGap = 0.12
+
+function placeAimChip(view: CourtPoint, width: number, markerHalf: number) {
+    const below = view.y + markerHalf + playerMarkerLabelGap + aimChipHeight / 2
+    const above = view.y - markerHalf - playerMarkerLabelGap - aimChipHeight / 2
+    const fitsBelow = below + aimChipHeight / 2 <= viewBoxHeight.value - 0.15
+    const y = fitsBelow ? below : above
+    const x = Math.min(Math.max(0.15, view.x - width / 2), Math.max(0.15, viewBoxWidth.value - width - 0.15))
+    return { x, y, width }
+}
+
+function aimChipsOverlap(a: { x: number; y: number; width: number }, b: { x: number; y: number; width: number }) {
+    return (
+        a.x < b.x + b.width + aimChipGap &&
+        a.x + a.width + aimChipGap > b.x &&
+        Math.abs(a.y - b.y) < aimChipHeight + aimChipGap
+    )
+}
+
+function clearAimChip(
+    chip: { x: number; y: number; width: number },
+    blockers: { x: number; y: number; width: number }[],
+) {
+    let y = chip.y
+    const fits = (center: number) =>
+        center - aimChipHeight / 2 >= 0.12 && center + aimChipHeight / 2 <= viewBoxHeight.value - 0.12
+    for (let pass = 0; pass < 4; pass++) {
+        let moved = false
+        for (const other of blockers) {
+            if (!aimChipsOverlap({ ...chip, y }, other)) continue
+            const down = other.y + aimChipHeight + aimChipGap
+            const up = other.y - aimChipHeight - aimChipGap
+            const next = y >= other.y && fits(down) ? down : fits(up) ? up : down
+            if (next !== y) {
+                y = next
+                moved = true
+            }
+        }
+        if (!moved) break
+    }
+    return { ...chip, y }
+}
+
+const aimLabels = computed(() => {
+    const target = placeAimChip(toView(props.target), 2.6, targetDiamondSize / Math.SQRT2)
+    const recommended = props.recommendedAim
+        ? clearAimChip(placeAimChip(toView(props.recommendedAim), 2.8, recommendedRingRadius), [target])
+        : null
+    const alternative =
+        props.shownShot === 'alternative' && props.alternativeAim
+            ? clearAimChip(
+                placeAimChip(toView(props.alternativeAim), alternativeLabelWidth.value, recommendedRingRadius),
+                recommended ? [target, recommended] : [target],
+            )
+            : null
+    return { target, recommended, alternative }
 })
 const yourSideLabel = computed(() =>
     props.vertical
@@ -474,6 +544,16 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                     <circle :r="recommendedDotRadius" :fill="alternativeColor" />
                 </g>
 
+                <!-- Ball: above the heatmap and landings, below the player markers -->
+                <g v-if="ballDraw" pointer-events="none">
+                    <ellipse :cx="ballDraw.shadowX" :cy="ballDraw.shadowY" :rx="ballShadowRx" :ry="ballShadowRy"
+                        fill="#000" opacity="0.45" />
+                    <circle :cx="ballDraw.x" :cy="ballDraw.y" :r="ballDraw.radius" :fill="ballColor" />
+                </g>
+                <circle v-if="bouncePoint" :key="bounceKey" class="bounce-ring" :cx="courtX + bouncePoint.x"
+                    :cy="courtY + bouncePoint.y" r="0.1" fill="none" :stroke="ballColor" stroke-width="0.05"
+                    pointer-events="none" />
+
                 <!-- You: marker, then the label above it -->
                 <g :class="{ 'player-marker': true, 'is-dragging': dragging === 'you' }" tabindex="0" role="button"
                     aria-roledescription="movable marker" :aria-label="`Your position. ${markerKeyHint}`"
@@ -529,27 +609,27 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                     font-weight="700" fill="var(--text-color-tertiary)">OPPONENT</text>
             </g>
 
-            <g :transform="`translate(${targetLabel.x} ${targetLabel.y})`" pointer-events="none">
-                <rect x="0" y="-0.28" :width="targetLabel.width" height="0.56" rx="0.12" fill="#111"
+            <g :transform="`translate(${aimLabels.target.x} ${aimLabels.target.y})`" pointer-events="none">
+                <rect x="0" y="-0.28" :width="aimLabels.target.width" height="0.56" rx="0.12" fill="#111"
                     fill-opacity="0.8" />
-                <text :x="targetLabel.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
+                <text :x="aimLabels.target.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
                     dominant-baseline="central" font-size="0.3" font-weight="700" fill="var(--court-target-color)">Your
                     target</text>
             </g>
 
-            <g v-if="recommendedAim && recommendedLabel" :opacity="isStale ? 0.5 : 1" pointer-events="none"
-                :transform="`translate(${recommendedLabel.x} ${recommendedLabel.y})`">
-                <rect x="0" y="-0.28" :width="recommendedLabel.width" height="0.56" rx="0.28"
+            <g v-if="recommendedAim && aimLabels.recommended" :opacity="isStale ? 0.5 : 1" pointer-events="none"
+                :transform="`translate(${aimLabels.recommended.x} ${aimLabels.recommended.y})`">
+                <rect x="0" y="-0.28" :width="aimLabels.recommended.width" height="0.56" rx="0.28"
                     :fill="recommendedColor" />
-                <text :x="recommendedLabel.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
+                <text :x="aimLabels.recommended.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
                     dominant-baseline="central" font-size="0.3" font-weight="700" fill="#0b1a10">Recommended</text>
             </g>
 
-            <g v-if="shownShot === 'alternative' && alternativeLabelPos" :opacity="isStale ? 0.5 : 1"
-                pointer-events="none" :transform="`translate(${alternativeLabelPos.x} ${alternativeLabelPos.y})`">
-                <rect x="0" y="-0.28" :width="alternativeLabelPos.width" height="0.56" rx="0.12" fill="#111"
+            <g v-if="aimLabels.alternative" :opacity="isStale ? 0.5 : 1" pointer-events="none"
+                :transform="`translate(${aimLabels.alternative.x} ${aimLabels.alternative.y})`">
+                <rect x="0" y="-0.28" :width="aimLabels.alternative.width" height="0.56" rx="0.12" fill="#111"
                     fill-opacity="0.8" />
-                <text :x="alternativeLabelPos.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
+                <text :x="aimLabels.alternative.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
                     dominant-baseline="central" font-size="0.3" font-weight="700" :fill="alternativeColor">{{
                         alternativeLabel }}</text>
             </g>
@@ -654,6 +734,31 @@ svg {
     .player-marker:focus-visible circle:nth-child(2) {
         stroke: #fff;
         stroke-width: 0.06;
+    }
+
+    .bounce-ring {
+        opacity: 0.8;
+        pointer-events: none;
+        animation: bounce-ring 500ms ease-out forwards;
+    }
+}
+
+@keyframes bounce-ring {
+    from {
+        r: 0.1;
+        opacity: 0.8;
+    }
+
+    to {
+        r: 0.6;
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    svg .bounce-ring {
+        animation: none;
+        opacity: 0.6;
     }
 }
 </style>

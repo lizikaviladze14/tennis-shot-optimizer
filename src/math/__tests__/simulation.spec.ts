@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aimInterception, estimateShotOutcome, type ShotScenario } from '../simulation'
+import { aimInterception, aimShotSettings, estimateShotOutcome, type ShotScenario } from '../simulation'
 import { createDraws } from '../random'
 import { CENTER_SERVICE_Y_M, COURT_SURFACE_LENGTH_M, NET_X_M } from '../courtGeometry'
 
@@ -23,6 +23,16 @@ const aimLong = { x: 30, y: CENTER_SERVICE_Y_M }
 const aimAtLanding = { x: 20, y: CENTER_SERVICE_Y_M }
 const centerDraw = { z1: 0, z2: 0 }
 const wideDraw = { z1: 0, z2: 10 }
+
+describe('aimShotSettings', () => {
+  it('returns the scenario speed and bounce unchanged when minFactor is 1', () => {
+    const fixed = { ...scenario, depthSpeed: { ...scenario.depthSpeed, minFactor: 1 } }
+    expect(aimShotSettings(fixed, aimInCourt)).toEqual({
+      ballSpeedMps: fixed.shot.ballSpeedMps,
+      bounce: fixed.bounce,
+    })
+  })
+})
 
 describe('aimInterception', () => {
   it('is the aim itself when the window is 0 and depth does not change the speed', () => {

@@ -7,11 +7,21 @@ const showTrajectory = ref(true)
 const showHeatmap = ref(false)
 const showLandings = ref(false)
 
+withDefaults(defineProps<{
+    isPlaying?: boolean
+    progress?: number
+}>(), {
+    isPlaying: false,
+    progress: 0,
+})
+
 const emit = defineEmits<{
     'update:showDispersion': [value: boolean]
     'update:showTrajectory': [value: boolean]
     'update:showHeatmap': [value: boolean]
     'update:showLandings': [value: boolean]
+    play: []
+    stop: []
 }>()
 
 watch(showDispersion, (value) => emit('update:showDispersion', value))
@@ -39,6 +49,21 @@ watch(showLandings, (value) => emit('update:showLandings', value))
                 <span class="label-full">Simulated landings</span>
                 <span class="label-short">Landings</span>
             </BaseCheckbox>
+            <button type="button" class="play" title="Plays 3× slower than real time"
+                :aria-label="isPlaying ? 'Stop the shot animation' : 'Play the shot animation'"
+                @click="emit(isPlaying ? 'stop' : 'play')">
+                <svg v-if="isPlaying" class="icon is-stop" viewBox="0 0 12 12" aria-hidden="true">
+                    <rect x="2" y="2" width="8" height="8" fill="currentColor" />
+                </svg>
+                <svg v-else class="icon is-play" viewBox="0 0 12 12" aria-hidden="true">
+                    <path d="M2.2 1.2 L10.8 6 L2.2 10.8 Z" fill="currentColor" />
+                </svg>
+                <span class="label" aria-hidden="true">
+                    <span :class="{ 'is-shown': !isPlaying }">Play shot</span>
+                    <span :class="{ 'is-shown': isPlaying }">Stop</span>
+                </span>
+                <span v-if="isPlaying" class="progress" :style="{ width: `${progress * 100}%` }" aria-hidden="true" />
+            </button>
         </div>
         <ul class="legend">
             <li>
@@ -80,6 +105,70 @@ watch(showLandings, (value) => emit('update:showLandings', value))
 
         .label-short {
             display: none;
+        }
+
+        .play {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.8rem 1.2rem;
+            border: 1px solid var(--layout-border-color);
+            border-radius: 1rem;
+            background: transparent;
+            color: var(--text-color-primary);
+            font: inherit;
+            font-size: 1.2rem;
+            font-weight: 500;
+            line-height: 1;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+
+            &:hover {
+                background: #1a2027;
+            }
+
+            &:focus-visible {
+                outline: 1px solid var(--text-color-secondary);
+                outline-offset: 2px;
+            }
+
+            .icon {
+                width: 1.4rem;
+                height: 1.4rem;
+                flex: none;
+
+                &.is-play {
+                    color: var(--green);
+                }
+
+                &.is-stop {
+                    color: var(--red);
+                }
+            }
+
+            .label {
+                display: grid;
+
+                span {
+                    grid-area: 1 / 1;
+                    visibility: hidden;
+
+                    &.is-shown {
+                        visibility: visible;
+                    }
+                }
+            }
+
+            .progress {
+                position: absolute;
+                left: 0;
+                bottom: 0;
+                height: 2px;
+                background: var(--court-ball-color);
+                transition: none;
+            }
         }
     }
 

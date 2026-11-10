@@ -1,5 +1,5 @@
 import type { OpponentSkill } from '@/types/opponentSkill'
-import { distance, type CourtPoint } from './point'
+import { distance, unitVector, type CourtPoint } from './point'
 
 /**
  * Smooth 0–1 chance that the opponent reaches the ball.
@@ -69,10 +69,7 @@ export function bestInterception(
   const flightDistanceM = distance(hitter, landing)
   if (flightDistanceM === 0)
     throw new Error('bestInterception: hitter and landing are the same point')
-  const direction = {
-    x: (landing.x - hitter.x) / flightDistanceM,
-    y: (landing.y - hitter.y) / flightDistanceM,
-  }
+  const direction = unitVector(hitter, landing)
 
   const flightTimeS = flightDistanceM / ballSpeedMps
   const bounceTravelM = bounce.afterBounceSpeedMps * bounce.playableWindowS
