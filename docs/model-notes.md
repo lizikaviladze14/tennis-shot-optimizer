@@ -1,5 +1,7 @@
 # Model notes
 
+Detailed adds more factors (shot types, bounce, rally value); it is not a claim that results match real tennis. All parameters are illustrative.
+
 ## Documented simplification: hitter mishits are not modeled
 
 **What the model includes.** Each simulated shot misses the aim by a random
@@ -52,7 +54,7 @@ landing spot.
 that includes the bounce, and the reach steepness adds uncertainty around the
 edge of the opponent's reach.
 
-**Possible ways to model it, from simple to realistic:**
+**Possible ways to model it, from simple to detailed:**
 1. Extra time after the bounce:
    coverage = run speed × (flight time + t_bounce), with t_bounce ≈ 0.3–0.5 s.
 2. A contact point further along the shot: measure the gap to
@@ -68,3 +70,42 @@ the conclusion.
 reasonably affect the model (clay: higher, slower bounce, so more time;
 grass: lower, faster bounce, so less time). Currently the surface only
 changes the court's appearance, by design.
+
+## Shot types fix the short-ball problem
+
+A constant ball speed made short balls arrive almost instantly, so the model
+over-recommended them (a baseline drop shot scored 91% to win). In Detailed
+mode, each shot type multiplies the level's speed and errors, and has a range
+of depths it can land in; the search only tries targets in that range.
+Simple mode keeps the original behavior: one speed, the whole court.
+
+## The opponent can play the ball after the bounce
+
+After landing, the ball keeps travelling in the same direction for a
+playable window (PLAYABLE_WINDOW_S = 0.4 s, illustrative) at
+ball speed × the shot type's afterBounceSpeedFactor. The model checks five
+points along that path and uses the one easiest for the opponent to reach.
+This fixed the remaining short-ball bias: a fast drive landing short keeps
+travelling toward the opponent, so it's easier to return than its landing
+spot suggests. Simple mode uses a window of 0 (the opponent must reach the
+landing point). Sideways kicks from sidespin aren't modeled.
+
+## Shorter targets mean slower balls
+
+With one speed per shot type, a drive landing just past the service line still
+travelled at full pace, so the search always picked the shortest allowed depth
+(the answer sat on the range boundary in every setup). In reality a short
+drive must be hit slower to clear the net and come down in time. In Detailed
+mode, speed now grows linearly from minDepthSpeedFactor at the shot type's
+shortest depth to full speed at its deepest. Net clearance itself (balls
+hitting the net) is still not modeled.
+
+## Returned balls have value, and deep returns are worth more
+
+A returned ball used to score 0 regardless of where it landed, so short balls
+that were safe to land looked best for less accurate players. In Detailed
+mode a returned ball is worth q, the chance to still win the rally: 0.2 for a
+ball landing at the net, rising linearly to 0.5 at the baseline (illustrative),
+measured at the actual landing. A landing's contribution is
+1 − (1 − q) × P(return), and the search maximizes P(rally win) − λ·P(miss).
+Losing the rally after a return scores 0, not −λ.

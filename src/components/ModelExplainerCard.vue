@@ -38,9 +38,9 @@ withDefaults(defineProps<{
             <li>
                 <p class="label">04 · SCORE</p>
                 <h4>Weigh risk vs reward</h4>
-                <p class="formula">value = P(win) − λ · P(miss)</p>
-                <p>λ comes from your risk preference: a miss costs λ points, a win scores 1. The target with the
-                    highest value is recommended.</p>
+                <p class="formula">value = P(rally win) − λ · P(miss)</p>
+                <p>A returned ball still counts for something: the chance you go on to win the rally, higher if your
+                    ball landed deep. λ comes from your risk preference.</p>
             </li>
         </ol>
     </section>
@@ -56,7 +56,7 @@ withDefaults(defineProps<{
     transition: border-color 0.35s ease;
 
     &.is-highlighted {
-        border-color: #6fd08c;
+        border-color: var(--green);
     }
 
     .heading {
@@ -96,7 +96,7 @@ withDefaults(defineProps<{
 
     .label {
         margin-bottom: 0.6rem;
-        color: #6fd08c;
+        color: var(--green);
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 1.1rem;
         font-weight: 600;

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { pointsDifference } from '@/math/analytics'
 import { targetLabel } from '@/math/describeTarget'
 import type { AimResult } from '@/math/optimizer'
 import type { CourtPoint } from '@/math/point'
@@ -15,8 +14,12 @@ const props = withDefaults(defineProps<{
     targetOutcome: ShotOutcome
     shownShot: ShownShot
     isStale?: boolean
+    showRallyWin?: boolean
+    rangeNote?: string
 }>(), {
     isStale: false,
+    showRallyWin: false,
+    rangeNote: undefined,
 })
 
 const emit = defineEmits<{
@@ -47,7 +50,7 @@ const rows = computed<Row[]>(() => [
     },
     {
         id: 'highestWin',
-        title: 'Highest win chance',
+        title: props.showRallyWin ? 'Highest rally win' : 'Highest win chance',
         marker: 'ring',
         aim: props.highestWin.aim,
         outcome: props.highestWin.outcome,
@@ -63,10 +66,21 @@ const rows = computed<Row[]>(() => [
     },
 ])
 
+function winFraction(outcome: ShotOutcome) {
+    return props.showRallyWin ? outcome.pRallyWin : outcome.pWin
+}
+
+const winLabel = computed(() => (props.showRallyWin ? 'Wins the rally' : 'Wins the point'))
+const winUnit = computed(() => (props.showRallyWin ? 'rally' : 'win'))
+
 function badge(row: Row) {
+    if (row.id === 'target' && props.rangeNote) return ''
     if (row.sameAsRecommended) return 'Same as recommended'
-    const difference = pointsDifference(row, props.recommended)
-    return `${difference > 0 ? '+' : ''}${difference} pts win`
+    const difference = Math.round((winFraction(row.outcome) - winFraction(props.recommended.outcome)) * 100)
+    const gap = `${Math.abs(difference)} pp vs recommended`
+    if (difference > 0) return `+${gap}`
+    if (difference < 0) return `−${gap}`
+    return gap
 }
 
 function isShown(row: Row) {
@@ -90,8 +104,9 @@ function percent(fraction: number) {
                         <span class="titles">
                             <span class="title">{{ row.title }}</span>
                             <span class="zone">{{ targetLabel(row.aim) }}</span>
+                            <span v-if="row.id === 'target' && rangeNote" class="range-note">{{ rangeNote }}</span>
                         </span>
-                        <span class="badge">{{ badge(row) }}</span>
+                        <span v-if="badge(row)" class="badge">{{ badge(row) }}</span>
                     </span>
                     <span class="stats">
                         <span class="stat stat-in">
@@ -104,11 +119,12 @@ function percent(fraction: number) {
                         </span>
                         <span class="stat stat-win">
                             <span class="stat-heading">
-                                <span class="stat-label">Wins the point</span>
-                                <span class="value">{{ percent(row.outcome.pWin) }}%<span class="unit"> win</span></span>
+                                <span class="stat-label">{{ winLabel }}</span>
+                                <span class="value">{{ percent(winFraction(row.outcome)) }}%<span class="unit">
+                                        {{ winUnit }}</span></span>
                             </span>
                             <span class="bar"><span class="bar-fill"
-                                    :style="{ width: `${percent(row.outcome.pWin)}%` }" /></span>
+                                    :style="{ width: `${percent(winFraction(row.outcome))}%` }" /></span>
                         </span>
                     </span>
                 </button>
@@ -122,7 +138,7 @@ function percent(fraction: number) {
 
 .compare-alternatives {
     --compare-in-color: var(--text-color-primary);
-    --compare-win-color: #6fd08c;
+    --compare-win-color: var(--green);
 
     padding: 1.6rem;
     background-color: var(--layout-bg-color);
@@ -234,6 +250,12 @@ function percent(fraction: number) {
         }
 
         .zone {
+            color: var(--text-color-secondary);
+            font-size: 1.1rem;
+            line-height: 1.35;
+        }
+
+        .range-note {
             color: var(--text-color-secondary);
             font-size: 1.1rem;
             line-height: 1.35;

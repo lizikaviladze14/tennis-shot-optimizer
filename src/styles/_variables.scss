@@ -1,42 +1,43 @@
 :root {
-    --white: #ffffff;
-    --black: #000000;
-    
-    --site-bg-color: #090e11;
-    --text-color-primary: #e9edf0;
-    --text-color-secondary: #95a8a9;
-    --text-color-tertiary: #381a08;
-    
-    // court
-    --court-surface-hard: #1f4a72;
-    --court-surround-hard: #1b3a35;
+  --white: #ffffff;
+  --black: #000000;
+  --green: #6fd08c;
 
-    --court-surface-clay: #a44e2e;
-    --court-surround-clay: #97462a;
+  --site-bg-color: #090e11;
+  --text-color-primary: #e9edf0;
+  --text-color-secondary: #95a8a9;
+  --text-color-tertiary: #381a08;
 
-    --court-grass-stripe-1: #336a35;
-    --court-grass-stripe-2: #2b5c2e;
+  // court
+  --court-surface-hard: #1f4a72;
+  --court-surround-hard: #1b3a35;
 
-    --player-marker-you-outline-color: #4fa3ff;
-    --player-marker-you-outline-color-opacity: rgba(79, 163, 255, .28);
-    --player-marker-you-fill-color: #ffffff;
-    --player-marker-you-dot-color: #4fa3ff;
-    --player-marker-opponent-outline-color: #ff8a30;
-    --player-marker-opponent-outline-color-opacity: rgba(255, 138, 48, .28);
-    --player-marker-opponent-fill-color: #ffffff;
-    --player-marker-opponent-dot-color: #ff8a30;
+  --court-surface-clay: #a44e2e;
+  --court-surround-clay: #97462a;
 
-    --court-line: #ffffff;
+  --court-grass-stripe-1: #336a35;
+  --court-grass-stripe-2: #2b5c2e;
 
-    --court-side-label-color: rgba(255, 255, 255, 0.55);
+  --player-marker-you-outline-color: #4fa3ff;
+  --player-marker-you-outline-color-opacity: rgba(79, 163, 255, 0.28);
+  --player-marker-you-fill-color: #ffffff;
+  --player-marker-you-dot-color: #4fa3ff;
+  --player-marker-opponent-outline-color: #ff8a30;
+  --player-marker-opponent-outline-color-opacity: rgba(255, 138, 48, 0.28);
+  --player-marker-opponent-fill-color: #ffffff;
+  --player-marker-opponent-dot-color: #ff8a30;
 
-    --court-target-color: #f2d04b;
+  --court-line: #ffffff;
 
-    // layout
-    --layout-bg-color: #11151a;
-    --layout-border-color: #222831;
-    --border-radius: 1.2rem;
+  --court-side-label-color: rgba(255, 255, 255, 0.55);
 
-    --checkbox-bg-color: #1a2027;
-    --options-bg-color: #0b0e11;
+  --court-target-color: #f2d04b;
+
+  // layout
+  --layout-bg-color: #11151a;
+  --layout-border-color: #222831;
+  --border-radius: 1.2rem;
+
+  --checkbox-bg-color: #1a2027;
+  --options-bg-color: #0b0e11;
 }

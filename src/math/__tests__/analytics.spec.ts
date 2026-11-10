@@ -15,8 +15,8 @@ import { Z_95 } from '../modelConstants'
 import type { AimResult } from '../optimizer'
 import type { ShotAccuracy } from '@/types/shotAccuracy'
 
-function result(x: number, pIn: number, pWin: number): AimResult {
-  return { aim: { x, y: 4 }, outcome: { pIn, pWin, pReturnGivenIn: null, winContributionVariance: 0 }, value: pWin }
+function result(x: number, pIn: number, pWin: number, pRallyWin = pWin): AimResult {
+  return { aim: { x, y: 4 }, outcome: { pIn, pWin, pRallyWin, pRallyWinSE: 0, pReturnGivenIn: null, winContributionVariance: 0 }, value: pWin }
 }
 
 describe('safestResult', () => {
@@ -52,6 +52,12 @@ describe('safestResult', () => {
     const neverWins = result(15, 0.6, 0)
     expect(safestResult([neverIn, neverWins])).toBe(neverWins)
   })
+
+  it('breaks a P(in) tie with the higher rally win when that metric is selected', () => {
+    const lowRally = result(14, 1, 0.9, 0.2)
+    const highRally = result(15, 1, 0.1, 0.8)
+    expect(safestResult([lowRally, highRally], 'pRallyWin')).toBe(highRally)
+  })
 })
 
 describe('highestWinResult', () => {
@@ -86,6 +92,18 @@ describe('highestWinResult', () => {
     const neverIn = result(14, 0, 0)
     const inButNeverWins = result(15, 0.6, 0)
     expect(highestWinResult([neverIn, inButNeverWins])).toBe(inButNeverWins)
+  })
+
+  it('ranks by rally win when that metric is selected', () => {
+    const highWin = result(14, 0.9, 0.8, 0.2)
+    const highRally = result(15, 0.7, 0.1, 0.6)
+    expect(highestWinResult([highWin, highRally], 'pRallyWin')).toBe(highRally)
+  })
+
+  it('breaks a rally-win tie with the higher P(in)', () => {
+    const lowIn = result(14, 0.4, 0.9, 0.5)
+    const highIn = result(15, 0.8, 0.1, 0.5)
+    expect(highestWinResult([lowIn, highIn], 'pRallyWin')).toBe(highIn)
   })
 })
 

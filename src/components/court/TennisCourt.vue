@@ -13,8 +13,6 @@ import {
     CENTER_SERVICE_Y_M,
     COURT_SURFACE_SINGLES_WIDTH_M,
     CENTER_MARK_LENGTH_M,
-    SINGLES_LEFT_Y_M,
-    SINGLES_RIGHT_Y_M,
 } from '@/math/courtGeometry'
 import type { TennisCourtSurface } from '@/types/tennisCourt'
 import { ref, computed } from 'vue'
@@ -25,6 +23,7 @@ import { distance, type CourtPoint } from '@/math/point'
 import type { AimResult } from '@/math/optimizer'
 import type { LandingKind } from '@/math/analytics'
 import { GRID_CELLS } from '@/math/modelConstants'
+import { heatmapCells as heatmapRectangles } from '@/math/heatmap'
 import { courtToViewBox, viewBoxToCourt } from './courtView'
 
 interface Props {
@@ -119,7 +118,7 @@ const shotDash = 0.28
 const shotDashGap = 0.18
 
 // recommended aim
-const recommendedColor = '#6fd08c'
+const recommendedColor = 'var(--green)'
 const recommendedRingRadius = 0.32
 const recommendedDotRadius = 0.1
 
@@ -143,33 +142,14 @@ const shotOpacity = computed(() => (shownShotDrawing.value.fromCalculation && pr
 
 const overlayOpacity = computed(() => (props.isStale ? 0.5 : 1))
 
-const cellW = (COURT_SURFACE_LENGTH_M - NET_X_M) / GRID_CELLS
-const cellH = (SINGLES_RIGHT_Y_M - SINGLES_LEFT_Y_M) / GRID_CELLS
-
 const heatmapCells = computed(() => {
     const results = props.aimResults
     if (!results || results.length === 0) return []
-    let min = Infinity
-    let max = -Infinity
-    for (const result of results) {
-        if (result.value < min) min = result.value
-        if (result.value > max) max = result.value
-    }
-    const span = max - min
-    const list: { x: number; y: number; t: number }[] = []
-    for (let i = 0; i < GRID_CELLS; i++) {
-        for (let j = 0; j < GRID_CELLS; j++) {
-            const result = results[i * GRID_CELLS + j]
-            if (!result) continue
-            const t = span === 0 ? 1 : (result.value - min) / span
-            list.push({
-                x: courtX + NET_X_M + i * cellW,
-                y: courtY + SINGLES_LEFT_Y_M + j * cellH,
-                t,
-            })
-        }
-    }
-    return list
+    return heatmapRectangles(results, GRID_CELLS).map((cell) => ({
+        ...cell,
+        x: courtX + cell.x,
+        y: courtY + cell.y,
+    }))
 })
 
 function heatmapFill(t: number) {
@@ -398,8 +378,8 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
 <template>
     <div class="tennis-court">
         <svg :class="{ 'is-dragging': dragging !== null, 'is-aiming': aim !== null }" ref="svgRef"
-            :viewBox="`0 0 ${viewBoxWidth} ${viewBoxHeight}`" @pointermove="onPointerMove($event)"
-            @pointerup="endDrag" @pointercancel="endDrag" @pointerleave="onPointerLeave">
+            :viewBox="`0 0 ${viewBoxWidth} ${viewBoxHeight}`" @pointermove="onPointerMove($event)" @pointerup="endDrag"
+            @pointercancel="endDrag" @pointerleave="onPointerLeave">
             <defs>
                 <pattern id="grass-stripes" patternUnits="userSpaceOnUse" width="3" height="1">
                     <rect width="1.5" height="1" fill="var(--court-grass-stripe-1)" />
@@ -415,116 +395,119 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
             </defs>
 
             <g :transform="courtTransform">
-            <!-- Green or colored margin around the court -->
-            <rect @pointerdown="placeTarget($event)" :width="WHOLE_COURT_LENGTH_M" :height="WHOLE_COURT_WIDTH_M"
-                :fill="surface === 'grass' ? 'url(#grass-stripes)' : `var(--court-surround-${surface})`" />
-            <!-- Doubles court surface and outer boundary -->
-            <rect @pointerdown="placeTarget($event)" :x="courtX" :y="courtY" :width="COURT_SURFACE_LENGTH_M"
-                :height="COURT_SURFACE_WIDTH_M" :fill="surface === 'grass' ? 'none' : `var(--court-surface-${surface})`"
-                stroke="var(--court-line)" :stroke-width="lineWidth" />
-            <g v-if="showHeatmap" :opacity="overlayOpacity" pointer-events="none">
-                <rect v-for="(cell, index) in heatmapCells" :key="index" :x="cell.x" :y="cell.y" :width="cellW"
-                    :height="cellH" :fill="heatmapFill(cell.t)" />
-            </g>
-            <!-- Net shadow, on the opponent's side of the net -->
-            <rect :x="netX + lineWidth / 2" :y="courtY" :width="netShadeWidth" :height="COURT_SURFACE_WIDTH_M"
-                fill="url(#net-shade)" />
-            <g stroke="var(--court-line)" :stroke-width="lineWidth" pointer-events="none">
-                <!-- Singles sidelines -->
-                <line :x1="courtX" :y1="singlesTop" :x2="courtRight" :y2="singlesTop" />
-                <line :x1="courtX" :y1="singlesBottom" :x2="courtRight" :y2="singlesBottom" />
-                <!-- Service lines -->
-                <line :x1="serviceNearX" :y1="singlesTop" :x2="serviceNearX" :y2="singlesBottom" />
-                <line :x1="serviceFarX" :y1="singlesTop" :x2="serviceFarX" :y2="singlesBottom" />
-                <!-- Center service line -->
-                <line :x1="serviceNearX" :y1="centerY" :x2="serviceFarX" :y2="centerY" />
-                <!-- Center marks on the baselines -->
-                <line :x1="courtX" :y1="centerY" :x2="courtX + CENTER_MARK_LENGTH_M" :y2="centerY" />
-                <line :x1="courtRight - CENTER_MARK_LENGTH_M" :y1="centerY" :x2="courtRight" :y2="centerY" />
-            </g>
-            <!-- Net and posts -->
-            <circle :cx="netX" :cy="netTop" :r="netPostRadius" fill="var(--court-line)" />
-            <circle :cx="netX" :cy="netBottom" :r="netPostRadius" fill="var(--court-line)" />
-            <line :x1="netX" :y1="netTop" :x2="netX" :y2="netBottom" stroke="var(--court-line)" :stroke-width="lineWidth" />
-            <g v-if="showLandings" :opacity="overlayOpacity" pointer-events="none">
-                <circle v-for="(landing, index) in simulatedLandings" :key="index" :cx="courtX + landing.point.x"
-                    :cy="courtY + landing.point.y" r="0.12" :fill="landingColor[landing.kind]"
-                    :opacity="landing.kind === 'in' ? 0.9 : 0.85" />
-            </g>
-            <g :opacity="shotOpacity" pointer-events="none">
-                <!-- Dispersion ellipse around the shown shot -->
-                <g v-if="showDispersion" :transform="`rotate(${shotAngle} ${courtX + shotAim.x} ${courtY + shotAim.y})`">
-                    <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="targetOuterRx" :ry="targetOuterRy"
-                        :fill="shotColor" opacity="0.12" />
-                    <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="targetOuterRx" :ry="targetOuterRy"
-                        fill="none" :stroke="shotColor" stroke-width="0.04"
-                        :stroke-dasharray="`${targetDash} ${targetDashGap}`" />
-                    <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="targetInnerRx" :ry="targetInnerRy"
-                        fill="none" :stroke="shotColor" stroke-width="0.05" />
+                <!-- Green or colored margin around the court -->
+                <rect @pointerdown="placeTarget($event)" :width="WHOLE_COURT_LENGTH_M" :height="WHOLE_COURT_WIDTH_M"
+                    :fill="surface === 'grass' ? 'url(#grass-stripes)' : `var(--court-surround-${surface})`" />
+                <!-- Doubles court surface and outer boundary -->
+                <rect @pointerdown="placeTarget($event)" :x="courtX" :y="courtY" :width="COURT_SURFACE_LENGTH_M"
+                    :height="COURT_SURFACE_WIDTH_M"
+                    :fill="surface === 'grass' ? 'none' : `var(--court-surface-${surface})`" stroke="var(--court-line)"
+                    :stroke-width="lineWidth" />
+                <g v-if="showHeatmap" :opacity="overlayOpacity" pointer-events="none">
+                    <rect v-for="(cell, index) in heatmapCells" :key="index" :x="cell.x" :y="cell.y" :width="cell.width"
+                        :height="cell.height" :fill="heatmapFill(cell.t)" />
                 </g>
-                <!-- Shot from you to the shown aim -->
-                <line v-if="showTrajectory" :x1="courtX + you.x" :y1="courtY + you.y" :x2="courtX + shotAim.x"
-                    :y2="courtY + shotAim.y" fill="none" :stroke="shotColor" stroke-width="0.04"
-                    :stroke-dasharray="`${shotDash} ${shotDashGap}`" />
-            </g>
+                <!-- Net shadow, on the opponent's side of the net -->
+                <rect :x="netX + lineWidth / 2" :y="courtY" :width="netShadeWidth" :height="COURT_SURFACE_WIDTH_M"
+                    fill="url(#net-shade)" />
+                <g stroke="var(--court-line)" :stroke-width="lineWidth" pointer-events="none">
+                    <!-- Singles sidelines -->
+                    <line :x1="courtX" :y1="singlesTop" :x2="courtRight" :y2="singlesTop" />
+                    <line :x1="courtX" :y1="singlesBottom" :x2="courtRight" :y2="singlesBottom" />
+                    <!-- Service lines -->
+                    <line :x1="serviceNearX" :y1="singlesTop" :x2="serviceNearX" :y2="singlesBottom" />
+                    <line :x1="serviceFarX" :y1="singlesTop" :x2="serviceFarX" :y2="singlesBottom" />
+                    <!-- Center service line -->
+                    <line :x1="serviceNearX" :y1="centerY" :x2="serviceFarX" :y2="centerY" />
+                    <!-- Center marks on the baselines -->
+                    <line :x1="courtX" :y1="centerY" :x2="courtX + CENTER_MARK_LENGTH_M" :y2="centerY" />
+                    <line :x1="courtRight - CENTER_MARK_LENGTH_M" :y1="centerY" :x2="courtRight" :y2="centerY" />
+                </g>
+                <!-- Net and posts -->
+                <circle :cx="netX" :cy="netTop" :r="netPostRadius" fill="var(--court-line)" />
+                <circle :cx="netX" :cy="netBottom" :r="netPostRadius" fill="var(--court-line)" />
+                <line :x1="netX" :y1="netTop" :x2="netX" :y2="netBottom" stroke="var(--court-line)"
+                    :stroke-width="lineWidth" />
+                <g v-if="showLandings" :opacity="overlayOpacity" pointer-events="none">
+                    <circle v-for="(landing, index) in simulatedLandings" :key="index" :cx="courtX + landing.point.x"
+                        :cy="courtY + landing.point.y" r="0.12" :fill="landingColor[landing.kind]"
+                        :opacity="landing.kind === 'in' ? 0.9 : 0.85" />
+                </g>
+                <g :opacity="shotOpacity" pointer-events="none">
+                    <!-- Dispersion ellipse around the shown shot -->
+                    <g v-if="showDispersion"
+                        :transform="`rotate(${shotAngle} ${courtX + shotAim.x} ${courtY + shotAim.y})`">
+                        <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="targetOuterRx"
+                            :ry="targetOuterRy" :fill="shotColor" opacity="0.12" />
+                        <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="targetOuterRx"
+                            :ry="targetOuterRy" fill="none" :stroke="shotColor" stroke-width="0.04"
+                            :stroke-dasharray="`${targetDash} ${targetDashGap}`" />
+                        <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="targetInnerRx"
+                            :ry="targetInnerRy" fill="none" :stroke="shotColor" stroke-width="0.05" />
+                    </g>
+                    <!-- Shot from you to the shown aim -->
+                    <line v-if="showTrajectory" :x1="courtX + you.x" :y1="courtY + you.y" :x2="courtX + shotAim.x"
+                        :y2="courtY + shotAim.y" fill="none" :stroke="shotColor" stroke-width="0.04"
+                        :stroke-dasharray="`${shotDash} ${shotDashGap}`" />
+                </g>
 
-            <!-- Target marker -->
-            <rect :x="courtX + target.x - targetDiamondSize / 2" :y="courtY + target.y - targetDiamondSize / 2"
-                :width="targetDiamondSize" :height="targetDiamondSize" :rx="targetDiamondRadius"
-                fill="var(--court-target-color)" stroke="#111" stroke-width="0.07" transform="rotate(45)"
-                :transform-origin="`${courtX + target.x} ${courtY + target.y}`" pointer-events="none" />
+                <!-- Target marker -->
+                <rect :x="courtX + target.x - targetDiamondSize / 2" :y="courtY + target.y - targetDiamondSize / 2"
+                    :width="targetDiamondSize" :height="targetDiamondSize" :rx="targetDiamondRadius"
+                    fill="var(--court-target-color)" stroke="#111" stroke-width="0.07" transform="rotate(45)"
+                    :transform-origin="`${courtX + target.x} ${courtY + target.y}`" pointer-events="none" />
 
-            <!-- Recommended aim: ring with a dot -->
-            <g v-if="recommendedAim" :opacity="isStale ? 0.5 : 1" pointer-events="none"
-                :transform="`translate(${courtX + recommendedAim.x} ${courtY + recommendedAim.y})`">
-                <circle :r="recommendedRingRadius" fill="rgba(0, 0, 0, 0.35)" :stroke="recommendedColor"
-                    stroke-width="0.08" />
-                <circle :r="recommendedDotRadius" :fill="recommendedColor" />
-            </g>
+                <!-- Recommended aim: ring with a dot -->
+                <g v-if="recommendedAim" :opacity="isStale ? 0.5 : 1" pointer-events="none"
+                    :transform="`translate(${courtX + recommendedAim.x} ${courtY + recommendedAim.y})`">
+                    <circle :r="recommendedRingRadius" fill="rgba(0, 0, 0, 0.35)" :stroke="recommendedColor"
+                        stroke-width="0.08" />
+                    <circle :r="recommendedDotRadius" :fill="recommendedColor" />
+                </g>
 
-            <!-- Alternative aim: white ring with a dot -->
-            <g v-if="shownShot === 'alternative' && alternativeAim" :opacity="isStale ? 0.5 : 1" pointer-events="none"
-                :transform="`translate(${courtX + alternativeAim.x} ${courtY + alternativeAim.y})`">
-                <circle :r="recommendedRingRadius" fill="rgba(0, 0, 0, 0.35)" :stroke="alternativeColor"
-                    stroke-width="0.08" />
-                <circle :r="recommendedDotRadius" :fill="alternativeColor" />
-            </g>
+                <!-- Alternative aim: white ring with a dot -->
+                <g v-if="shownShot === 'alternative' && alternativeAim" :opacity="isStale ? 0.5 : 1"
+                    pointer-events="none"
+                    :transform="`translate(${courtX + alternativeAim.x} ${courtY + alternativeAim.y})`">
+                    <circle :r="recommendedRingRadius" fill="rgba(0, 0, 0, 0.35)" :stroke="alternativeColor"
+                        stroke-width="0.08" />
+                    <circle :r="recommendedDotRadius" :fill="alternativeColor" />
+                </g>
 
-            <!-- You: marker, then the label above it -->
-            <g :class="{ 'player-marker': true, 'is-dragging': dragging === 'you' }" tabindex="0" role="button"
-                aria-roledescription="movable marker" :aria-label="`Your position. ${markerKeyHint}`"
-                @pointerdown="startDrag('you', $event)" @keydown="nudge('you', $event)">
-                <circle :cx="courtX + you.x" :cy="courtY + you.y"
-                    :r="dragging === 'you' ? playerMarkerOutlineRadiusDragging : playerMarkerOutlineRadius"
-                    fill="var(--player-marker-you-outline-color)" :opacity="playerMarkerOutlineOpacity" />
-                <circle :cx="courtX + you.x" :cy="courtY + you.y" :r="playerMarkerRadius"
-                    fill="var(--player-marker-you-fill-color)" filter="url(#marker-shadow)" />
-                <circle :cx="courtX + you.x" :cy="courtY + you.y" :r="playerMarkerDotRadius"
-                    fill="var(--player-marker-you-dot-color)" />
-            </g>
-            <!-- Opponent: marker, then the label above it -->
-            <g :class="{ 'player-marker': true, 'is-dragging': dragging === 'opponent' }" tabindex="0"
-                role="button" aria-roledescription="movable marker"
-                :aria-label="`Opponent position. ${markerKeyHint}`" @pointerdown="startDrag('opponent', $event)"
-                @keydown="nudge('opponent', $event)">
-                <circle :cx="courtX + opponent.x" :cy="courtY + opponent.y"
-                    :r="dragging === 'opponent' ? playerMarkerOutlineRadiusDragging : playerMarkerOutlineRadius"
-                    fill="var(--player-marker-opponent-outline-color)" :opacity="playerMarkerOutlineOpacity" />
-                <circle :cx="courtX + opponent.x" :cy="courtY + opponent.y" :r="playerMarkerRadius"
-                    fill="var(--player-marker-opponent-fill-color)" filter="url(#marker-shadow)" />
-                <circle :cx="courtX + opponent.x" :cy="courtY + opponent.y" :r="playerMarkerDotRadius"
-                    fill="var(--player-marker-opponent-dot-color)" />
-            </g>
+                <!-- You: marker, then the label above it -->
+                <g :class="{ 'player-marker': true, 'is-dragging': dragging === 'you' }" tabindex="0" role="button"
+                    aria-roledescription="movable marker" :aria-label="`Your position. ${markerKeyHint}`"
+                    @pointerdown="startDrag('you', $event)" @keydown="nudge('you', $event)">
+                    <circle :cx="courtX + you.x" :cy="courtY + you.y"
+                        :r="dragging === 'you' ? playerMarkerOutlineRadiusDragging : playerMarkerOutlineRadius"
+                        fill="var(--player-marker-you-outline-color)" :opacity="playerMarkerOutlineOpacity" />
+                    <circle :cx="courtX + you.x" :cy="courtY + you.y" :r="playerMarkerRadius"
+                        fill="var(--player-marker-you-fill-color)" filter="url(#marker-shadow)" />
+                    <circle :cx="courtX + you.x" :cy="courtY + you.y" :r="playerMarkerDotRadius"
+                        fill="var(--player-marker-you-dot-color)" />
+                </g>
+                <!-- Opponent: marker, then the label above it -->
+                <g :class="{ 'player-marker': true, 'is-dragging': dragging === 'opponent' }" tabindex="0" role="button"
+                    aria-roledescription="movable marker" :aria-label="`Opponent position. ${markerKeyHint}`"
+                    @pointerdown="startDrag('opponent', $event)" @keydown="nudge('opponent', $event)">
+                    <circle :cx="courtX + opponent.x" :cy="courtY + opponent.y"
+                        :r="dragging === 'opponent' ? playerMarkerOutlineRadiusDragging : playerMarkerOutlineRadius"
+                        fill="var(--player-marker-opponent-outline-color)" :opacity="playerMarkerOutlineOpacity" />
+                    <circle :cx="courtX + opponent.x" :cy="courtY + opponent.y" :r="playerMarkerRadius"
+                        fill="var(--player-marker-opponent-fill-color)" filter="url(#marker-shadow)" />
+                    <circle :cx="courtX + opponent.x" :cy="courtY + opponent.y" :r="playerMarkerDotRadius"
+                        fill="var(--player-marker-opponent-dot-color)" />
+                </g>
 
-            <!-- Aim -->
-            <g v-if="aim" pointer-events="none">
-                <circle v-if="aimOnOpponentSide" :cx="courtX + aim.x" :cy="courtY + aim.y" r="0.2" fill="none" stroke="#fff"
-                    stroke-width="0.03" />
-                <line :x1="courtX + aim.x - 0.28" :y1="courtY + aim.y" :x2="courtX + aim.x + 0.28" :y2="courtY + aim.y"
-                    stroke="#fff" stroke-width="0.03" />
-                <line :x1="courtX + aim.x" :y1="courtY + aim.y - 0.28" :x2="courtX + aim.x" :y2="courtY + aim.y + 0.28"
-                    stroke="#fff" stroke-width="0.03" />
-            </g>
+                <!-- Aim -->
+                <g v-if="aim" pointer-events="none">
+                    <circle v-if="aimOnOpponentSide" :cx="courtX + aim.x" :cy="courtY + aim.y" r="0.2" fill="none"
+                        stroke="#fff" stroke-width="0.03" />
+                    <line :x1="courtX + aim.x - 0.28" :y1="courtY + aim.y" :x2="courtX + aim.x + 0.28"
+                        :y2="courtY + aim.y" stroke="#fff" stroke-width="0.03" />
+                    <line :x1="courtX + aim.x" :y1="courtY + aim.y - 0.28" :x2="courtX + aim.x"
+                        :y2="courtY + aim.y + 0.28" stroke="#fff" stroke-width="0.03" />
+                </g>
             </g>
 
             <text fill="var(--court-side-label-color)" class="side-label" :x="yourSideLabel.x" :y="yourSideLabel.y"
@@ -534,7 +517,8 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 font-size="0.38">OPPONENT'S SIDE</text>
 
             <g :transform="`translate(${youLabel.x} ${youLabel.y})`" pointer-events="none">
-                <rect x="-0.7" y="-0.28" width="1.4" height="0.56" rx="0.28" fill="var(--player-marker-you-dot-color)" />
+                <rect x="-0.7" y="-0.28" width="1.4" height="0.56" rx="0.28"
+                    fill="var(--player-marker-you-dot-color)" />
                 <text font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
                     font-weight="700" fill="var(--text-color-tertiary)">YOU</text>
             </g>
@@ -549,8 +533,8 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 <rect x="0" y="-0.28" :width="targetLabel.width" height="0.56" rx="0.12" fill="#111"
                     fill-opacity="0.8" />
                 <text :x="targetLabel.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
-                    dominant-baseline="central" font-size="0.3" font-weight="700"
-                    fill="var(--court-target-color)">Your target</text>
+                    dominant-baseline="central" font-size="0.3" font-weight="700" fill="var(--court-target-color)">Your
+                    target</text>
             </g>
 
             <g v-if="recommendedAim && recommendedLabel" :opacity="isStale ? 0.5 : 1" pointer-events="none"
@@ -628,7 +612,7 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
         line-height: 1.7;
 
         &.is-win {
-            color: #6fd08c;
+            color: var(--green);
         }
     }
 }

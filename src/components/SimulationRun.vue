@@ -1,34 +1,52 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { intervalHalfWidth } from '@/math/analytics'
+import { Z_95 } from '@/math/modelConstants'
 import type { ShotOutcome } from '@/math/simulation'
 import { formatPercent } from '@/utils/formatPercent'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     candidateCount: number
     shotsPerTarget: number
     outcome: ShotOutcome
     computeTimeMs: number
-}>()
+    showRallyWin?: boolean
+}>(), {
+    showRallyWin: false,
+})
 
 function withInterval(p: number, variance: number) {
     const half = intervalHalfWidth(variance, props.shotsPerTarget) * 100
     return `${formatPercent(p)} ± ${half.toFixed(1)}`
 }
 
-const rows = computed(() => [
-    { label: 'Candidate targets', value: String(props.candidateCount) },
-    { label: 'Shots per candidate', value: String(props.shotsPerTarget) },
-    {
-        label: 'Lands in · recommended',
-        value: withInterval(props.outcome.pIn, props.outcome.pIn * (1 - props.outcome.pIn)),
-    },
-    {
-        label: 'Wins the point · recommended',
-        value: withInterval(props.outcome.pWin, props.outcome.winContributionVariance),
-    },
-    { label: 'Compute time', value: `${props.computeTimeMs} ms` },
-])
+function withStandardError(p: number, standardError: number) {
+    const half = Z_95 * standardError * 100
+    return `${formatPercent(p)} ± ${half.toFixed(1)}`
+}
+
+const rows = computed(() => {
+    const list = [
+        { label: 'Candidate targets', value: String(props.candidateCount) },
+        { label: 'Shots per candidate', value: String(props.shotsPerTarget) },
+        {
+            label: 'Lands in · recommended',
+            value: withInterval(props.outcome.pIn, props.outcome.pIn * (1 - props.outcome.pIn)),
+        },
+        {
+            label: 'Wins the point · recommended',
+            value: withInterval(props.outcome.pWin, props.outcome.winContributionVariance),
+        },
+    ]
+    if (props.showRallyWin) {
+        list.push({
+            label: 'Wins the rally · recommended',
+            value: withStandardError(props.outcome.pRallyWin, props.outcome.pRallyWinSE),
+        })
+    }
+    list.push({ label: 'Compute time', value: `${props.computeTimeMs} ms` })
+    return list
+})
 </script>
 
 <template>

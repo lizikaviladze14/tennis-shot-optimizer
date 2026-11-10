@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { findBestAim, gridAims, shotValue } from '../optimizer'
 import type { ShotOutcome, ShotScenario } from '../simulation'
 import { isPointInCourt } from '../shotScore'
+import { metresPastNet } from '../describeTarget'
 import {
   CENTER_SERVICE_Y_M,
   COURT_SURFACE_LENGTH_M,
@@ -11,8 +12,8 @@ import {
   SINGLES_RIGHT_Y_M,
 } from '../courtGeometry'
 
-const A: ShotOutcome = { pIn: 0.8, pWin: 0.4, pReturnGivenIn: null, winContributionVariance: 0 }
-const B: ShotOutcome = { pIn: 0.97, pWin: 0.3, pReturnGivenIn: null, winContributionVariance: 0 }
+const A: ShotOutcome = { pIn: 0.8, pWin: 0.4, pRallyWin: 0.4, pRallyWinSE: 0, pReturnGivenIn: null, winContributionVariance: 0 }
+const B: ShotOutcome = { pIn: 0.97, pWin: 0.3, pRallyWin: 0.3, pRallyWinSE: 0, pReturnGivenIn: null, winContributionVariance: 0 }
 
 describe('shotValue', () => {
   it('prefers the safer shot B with riskWeight 1', () => {
@@ -35,7 +36,7 @@ describe('shotValue', () => {
   })
 
   it('can be negative', () => {
-    expect(shotValue({ pIn: 0.5, pWin: 0.2, pReturnGivenIn: null, winContributionVariance: 0 }, 1)).toBeCloseTo(-0.3)
+    expect(shotValue({ pIn: 0.5, pWin: 0.2, pRallyWin: 0.2, pRallyWinSE: 0, pReturnGivenIn: null, winContributionVariance: 0 }, 1)).toBeCloseTo(-0.3)
   })
 
   it('throws when riskWeight is negative', () => {
@@ -88,6 +89,9 @@ describe('findBestAim', () => {
     opponent: { x: COURT_SURFACE_LENGTH_M, y: 2 },
     shot: { level: 'advanced', depthErrorM: 1.4, sideErrorM: 0.9, ballSpeedMps: 25 },
     opponentSkill: { level: 'advanced', runSpeedMps: 5, consistency: 0.88 },
+    bounce: { afterBounceSpeedMps: 25, playableWindowS: 0 },
+    depthSpeed: { minPastNetM: 0, maxPastNetM: 1, minFactor: 1 },
+    returnValue: { atNet: 0, atBaseline: 0 },
   }
   const { best, results } = findBestAim(scenario, [{ z1: 0, z2: 0 }], 0.4, 27)
 
@@ -106,5 +110,49 @@ describe('findBestAim', () => {
   it('aims short and away from an opponent standing deep at low y', () => {
     expect(best.aim.y).toBeGreaterThan(CENTER_SERVICE_Y_M)
     expect(best.aim.x).toBeLessThan(SERVICE_LINE_FAR_X_M)
+  })
+})
+
+describe('findBestAim pastNetRange', () => {
+  const scenario: ShotScenario = {
+    hitter: { x: 0, y: CENTER_SERVICE_Y_M },
+    opponent: { x: COURT_SURFACE_LENGTH_M, y: 2 },
+    shot: { level: 'advanced', depthErrorM: 1.4, sideErrorM: 0.9, ballSpeedMps: 25 },
+    opponentSkill: { level: 'advanced', runSpeedMps: 5, consistency: 0.88 },
+    bounce: { afterBounceSpeedMps: 25, playableWindowS: 0 },
+    depthSpeed: { minPastNetM: 0, maxPastNetM: 1, minFactor: 1 },
+    returnValue: { atNet: 0, atBaseline: 0 },
+  }
+  const draws = [{ z1: 0, z2: 0 }]
+  const riskWeight = 0.4
+  const cellCount = 27
+
+  it('returns the full grid when no range is given', () => {
+    const { results } = findBestAim(scenario, draws, riskWeight, cellCount)
+    expect(results).toHaveLength(729)
+  })
+
+  it('keeps only drop-range aims', () => {
+    const { results } = findBestAim(scenario, draws, riskWeight, cellCount, { min: 0.5, max: 5 })
+    expect(results.every((result) => {
+      const pastNet = metresPastNet(result.aim)
+      return 0.5 <= pastNet && pastNet <= 5
+    })).toBe(true)
+    expect(results.length).toBeLessThan(729)
+  })
+
+  it('keeps drive-range aims off the short ball', () => {
+    const range = { min: 4.5, max: COURT_SURFACE_LENGTH_M - NET_X_M }
+    const { best, results } = findBestAim(scenario, draws, riskWeight, cellCount, range)
+    expect(results.every((result) => metresPastNet(result.aim) >= 4.5)).toBe(true)
+    const bestPastNet = metresPastNet(best.aim)
+    expect(bestPastNet).toBeGreaterThanOrEqual(range.min)
+    expect(bestPastNet).toBeLessThanOrEqual(range.max)
+  })
+
+  it('throws when the range is outside the court', () => {
+    expect(() => findBestAim(scenario, draws, riskWeight, cellCount, { min: 20, max: 30 })).toThrow(
+      'no aims in the given range',
+    )
   })
 })

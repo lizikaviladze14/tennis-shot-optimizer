@@ -5,6 +5,7 @@ import RiskVsReward from '@/components/RiskVsReward.vue'
 import IconCrosshair from '@/assets/icons/icon-crosshair.vue'
 import type { AimResult } from '@/math/optimizer'
 import type { CourtPoint } from '@/math/point'
+import type { Interception } from '@/math/opponent'
 import type { ShotOutcome } from '@/math/simulation'
 import type { ShownShot } from '@/types/shownShot'
 
@@ -12,9 +13,9 @@ withDefaults(defineProps<{
     aim: CourtPoint
     opponent: CourtPoint
     outcome: ShotOutcome
-    coverageM: number
+    interception: Interception
     recommended?: AimResult | null
-    recommendedCoverageM?: number
+    recommendedInterception?: Interception
     candidateCount: number
     shotsPerTarget: number
     isCalculating?: boolean
@@ -23,15 +24,19 @@ withDefaults(defineProps<{
     highestWin?: AimResult | null
     isStale?: boolean
     results?: AimResult[]
+    rangeNote?: string
+    showRallyWin?: boolean
 }>(), {
     recommended: null,
-    recommendedCoverageM: undefined,
+    recommendedInterception: undefined,
     isCalculating: false,
     shownShot: 'target',
     safest: null,
     highestWin: null,
     isStale: false,
     results: () => [],
+    rangeNote: undefined,
+    showRallyWin: false,
 })
 
 const emit = defineEmits<{
@@ -55,21 +60,24 @@ const emit = defineEmits<{
                 </button>
                 <p class="hint">Tests {{ candidateCount }} candidate targets with {{ shotsPerTarget }} shots each.</p>
             </div>
-            <ShotResultCard v-if="recommended && recommendedCoverageM !== undefined" class="recommended"
+            <ShotResultCard v-if="recommended && recommendedInterception" class="recommended"
                 heading="Recommended shot" :aim="recommended.aim" :opponent="opponent" :outcome="recommended.outcome"
-                :coverage-m="recommendedCoverageM" accent-color="#6fd08c" :is-active="shownShot === 'recommended'"
+                :interception="recommendedInterception" accent-color="var(--green)" :show-rally-win="showRallyWin"
+                :is-active="shownShot === 'recommended'"
                 @show-on-court="emit('showOnCourt', 'recommended')" />
             <ShotResultCard class="your-target" heading="Your target" :aim="aim" :opponent="opponent" :outcome="outcome"
-                :coverage-m="coverageM" accent-color="var(--court-target-color)"
+                :interception="interception" accent-color="var(--court-target-color)" :range-note="rangeNote"
+                :show-rally-win="showRallyWin"
                 :is-active="shownShot === 'target' || !recommended" @show-on-court="emit('showOnCourt', 'target')" />
         </div>
         <RiskVsReward v-if="recommended && safest && highestWin && results.length" :results="results"
             :recommended="recommended" :safest="safest" :highest-win="highestWin" :target="aim"
-            :target-outcome="outcome" :shown-shot="shownShot" :is-stale="isStale"
-            @select="emit('showOnCourt', $event)" />
+            :target-outcome="outcome" :shown-shot="shownShot" :is-stale="isStale" :show-rally-win="showRallyWin"
+            :target-out-of-range="Boolean(rangeNote)" @select="emit('showOnCourt', $event)" />
         <CompareAlternatives v-if="recommended && safest && highestWin" :recommended="recommended" :safest="safest"
             :highest-win="highestWin" :target="aim" :target-outcome="outcome" :shown-shot="shownShot"
-            :is-stale="isStale" @select="emit('showOnCourt', $event)" />
+            :is-stale="isStale" :show-rally-win="showRallyWin" :range-note="rangeNote"
+            @select="emit('showOnCourt', $event)" />
     </div>
 </template>
 
@@ -89,7 +97,7 @@ const emit = defineEmits<{
     background: transparent;
     border: none;
 
-    > * {
+    >* {
         flex-shrink: 0;
     }
 
@@ -111,10 +119,10 @@ const emit = defineEmits<{
             gap: 1rem;
             width: 100%;
             padding: 1.3rem 1.6rem;
-            border: 1px solid #6fd08c;
+            border: 1px solid var(--green);
             border-radius: 1rem;
             background: transparent;
-            color: #6fd08c;
+            color: var(--green);
             font: inherit;
             font-size: 1.5rem;
             font-weight: 700;
@@ -131,7 +139,7 @@ const emit = defineEmits<{
 
             &.is-stale {
                 border: none;
-                background: #6fd08c;
+                background: var(--green);
                 color: #0b1a10;
                 animation: calculate-pulse 2s ease-in-out infinite;
 
@@ -151,6 +159,7 @@ const emit = defineEmits<{
         }
 
         @keyframes calculate-pulse {
+
             0%,
             100% {
                 box-shadow: 0 0 0 0 rgba(111, 208, 140, 0.45);
@@ -191,7 +200,7 @@ const emit = defineEmits<{
         .action {
             .calculate:not(.is-loading) {
                 border: none;
-                background: #6fd08c;
+                background: var(--green);
                 color: #0b1a10;
                 animation: none;
 
@@ -209,7 +218,7 @@ const emit = defineEmits<{
             border-bottom: none;
         }
 
-        .recommended + .your-target {
+        .recommended+.your-target {
             display: none;
         }
     }

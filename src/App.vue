@@ -10,8 +10,8 @@ import type { TennisCourtSurface } from '@/types/tennisCourt'
 import { DEFAULT_YOU, DEFAULT_OPPONENT } from '@/math/playerPosition'
 import type { CourtPoint } from '@/math/point'
 import { CENTER_SERVICE_Y_M } from '@/math/courtGeometry'
-import { estimateShotOutcome, type ShotScenario } from '@/math/simulation'
-import { opponentCoverage } from '@/math/opponent'
+import { metresPastNet } from '@/math/describeTarget'
+import { aimInterception, estimateShotOutcome, type ShotScenario } from '@/math/simulation'
 import { createDraws, mulberry32 } from '@/math/random'
 import { SHOT_ACCURACY_PRESETS, type ShotAccuracy, type ShotAccuracyLevel } from '@/types/shotAccuracy'
 import { OPPONENT_SKILL_PRESETS, type OpponentSkill, type OpponentSkillLevel } from '@/types/opponentSkill'
@@ -19,11 +19,15 @@ import { RISK_PRESETS, type RiskPreference } from '@/types/riskPreference'
 import { DEFAULT_SHOT_COUNT, type ShotCount } from '@/types/shotCount'
 import CourtControls from './components/court/CourtControls.vue'
 import { findBestAim, type AimResult } from '@/math/optimizer'
-import { GRID_CELLS } from '@/math/modelConstants'
-import { highestWinResult, safestResult } from '@/math/analytics'
+import { GRID_CELLS, PLAYABLE_WINDOW_S, RETURN_VALUE_AT_BASELINE, RETURN_VALUE_AT_NET } from '@/math/modelConstants'
+import { highestWinResult, safestResult, type WinMetric } from '@/math/analytics'
 import type { ShownShot } from '@/types/shownShot'
 import { simulatedLandings, landingCounts } from '@/math/analytics'
 import ModelAnalytics from './components/ModelAnalytics.vue'
+import SegmentedControl from '@/components/base/SegmentedControl.vue'
+import { SHOT_TYPE_PROFILES, type ShotType } from '@/types/shotTypes'
+import type { ModelLevel } from '@/types/modelLevel'
+import { applyShotProfile } from '@/math/shotProfle'
 
 const surface = ref<TennisCourtSurface>('hard')
 const shotAccuracy = ref<ShotAccuracy>({
@@ -35,6 +39,54 @@ const showDispersion = ref(true)
 const showTrajectory = ref(true)
 const showHeatmap = ref(false)
 const showLandings = ref(false)
+
+const modelLevel = ref<ModelLevel>('detailed')
+const shotType = ref<ShotType>('drive')
+const modelLevelOptions: { id: ModelLevel; label: string }[] = [
+  { id: 'simple', label: 'Simple' },
+  { id: 'detailed', label: 'Detailed' },
+]
+
+const effectiveShot = computed(() =>
+  modelLevel.value === 'detailed'
+    ? applyShotProfile(shotAccuracy.value, SHOT_TYPE_PROFILES[shotType.value])
+    : shotAccuracy.value,
+)
+
+const pastNetRange = computed(() => {
+  if (modelLevel.value !== 'detailed') return undefined
+  const profile = SHOT_TYPE_PROFILES[shotType.value]
+  return { min: profile.minPastNetM, max: profile.maxPastNetM }
+})
+
+const bounce = computed(() =>
+  modelLevel.value === 'detailed'
+    ? {
+        afterBounceSpeedMps:
+          effectiveShot.value.ballSpeedMps * SHOT_TYPE_PROFILES[shotType.value].afterBounceSpeedFactor,
+        playableWindowS: PLAYABLE_WINDOW_S,
+      }
+    : {
+        afterBounceSpeedMps: effectiveShot.value.ballSpeedMps,
+        playableWindowS: 0,
+      },
+)
+
+const depthSpeed = computed(() => {
+  if (modelLevel.value !== 'detailed') return { minPastNetM: 0, maxPastNetM: 1, minFactor: 1 }
+  const profile = SHOT_TYPE_PROFILES[shotType.value]
+  return {
+    minPastNetM: profile.minPastNetM,
+    maxPastNetM: profile.maxPastNetM,
+    minFactor: profile.minDepthSpeedFactor,
+  }
+})
+
+const returnValue = computed(() =>
+  modelLevel.value === 'detailed'
+    ? { atNet: RETURN_VALUE_AT_NET, atBaseline: RETURN_VALUE_AT_BASELINE }
+    : { atNet: 0, atBaseline: 0 },
+)
 
 function selectAccuracy(level: ShotAccuracyLevel) {
   shotAccuracy.value = { level, ...SHOT_ACCURACY_PRESETS[level] }
@@ -82,30 +134,39 @@ const draws = computed(() => createDraws(shotsPerTarget.value, mulberry32(DRAWS_
 const scenario = computed<ShotScenario>(() => ({
   hitter: you.value,
   opponent: opponent.value,
-  shot: shotAccuracy.value,
+  shot: effectiveShot.value,
   opponentSkill: opponentSkill.value,
+  bounce: bounce.value,
+  depthSpeed: depthSpeed.value,
+  returnValue: returnValue.value,
 }))
 
 const outcome = computed(() => estimateShotOutcome(scenario.value, target.value, draws.value))
 
-const coverage = computed(() =>
-  opponentCoverage(you.value, target.value, shotAccuracy.value.ballSpeedMps, opponentSkill.value.runSpeedMps),
-)
+const targetInterception = computed(() => aimInterception(scenario.value, target.value))
 
 const riskWeight = computed(() => RISK_PRESETS[riskPreference.value].riskWeight)
 const recommendation = ref<{ best: AimResult, results: AimResult[] } | null>(null)
 const isStale = ref(false)
 const shownShot = ref<ShownShot>('target')
 
-const safest = computed(() => (recommendation.value ? safestResult(recommendation.value.results) : null))
-const highestWin = computed(() => (recommendation.value ? highestWinResult(recommendation.value.results) : null))
+const winMetric = computed((): WinMetric => (modelLevel.value === 'detailed' ? 'pRallyWin' : 'pWin'))
 
-const ALTERNATIVE_LABELS = { safest: 'Safest shot', highestWin: 'Highest win chance' } as const
+const safest = computed(() =>
+  recommendation.value ? safestResult(recommendation.value.results, winMetric.value) : null,
+)
+const highestWin = computed(() =>
+  recommendation.value ? highestWinResult(recommendation.value.results, winMetric.value) : null,
+)
+
+const highestWinLabel = computed(() =>
+  modelLevel.value === 'detailed' ? 'Highest rally win' : 'Highest win chance',
+)
 
 const alternative = computed(() => {
   const shot = shownShot.value
-  if (shot === 'safest' && safest.value) return { aim: safest.value.aim, label: ALTERNATIVE_LABELS.safest }
-  if (shot === 'highestWin' && highestWin.value) return { aim: highestWin.value.aim, label: ALTERNATIVE_LABELS.highestWin }
+  if (shot === 'safest' && safest.value) return { aim: safest.value.aim, label: 'Safest shot' }
+  if (shot === 'highestWin' && highestWin.value) return { aim: highestWin.value.aim, label: highestWinLabel.value }
   return null
 })
 
@@ -117,7 +178,7 @@ const courtShot = computed(() => {
 
 const recommendedLandings = computed(() =>
   recommendation.value
-    ? simulatedLandings(you.value, recommendation.value.best.aim, shotAccuracy.value, draws.value)
+    ? simulatedLandings(you.value, recommendation.value.best.aim, effectiveShot.value, draws.value)
     : [],
 )
 
@@ -131,16 +192,21 @@ function showOnCourt(shot: ShownShot) {
   shownShot.value = isRecommended ? 'recommended' : shot
 }
 
-const recommendedCoverage = computed(() =>
-  recommendation.value
-    ? opponentCoverage(
-      you.value,
-      recommendation.value.best.aim,
-      shotAccuracy.value.ballSpeedMps,
-      opponentSkill.value.runSpeedMps,
-    )
-    : undefined,
+const recommendedInterception = computed(() =>
+  recommendation.value ? aimInterception(scenario.value, recommendation.value.best.aim) : undefined,
 )
+
+const candidateCount = computed(() => recommendation.value?.results.length ?? GRID_CELLS * GRID_CELLS)
+
+const targetRangeNote = computed(() => {
+  if (modelLevel.value !== 'detailed') return undefined
+  const profile = SHOT_TYPE_PROFILES[shotType.value]
+  const pastNet = metresPastNet(target.value)
+  if (pastNet < profile.minPastNetM || pastNet > profile.maxPastNetM) {
+    return `Outside the usual range for a ${profile.label}.`
+  }
+  return undefined
+})
 
 const MIN_LOADER_MS = 400
 const isCalculating = ref(false)
@@ -163,7 +229,7 @@ async function calculateRecommendation() {
   await nextPaint()
 
   const searchStarted = performance.now()
-  const result = findBestAim(scenario.value, draws.value, riskWeight.value, GRID_CELLS)
+  const result = findBestAim(scenario.value, draws.value, riskWeight.value, GRID_CELLS, pastNetRange.value)
   computeTimeMs.value = Math.round(performance.now() - searchStarted)
 
   await wait(MIN_LOADER_MS - (performance.now() - startedAt))
@@ -179,7 +245,7 @@ function resetPositions() {
   opponent.value = { ...DEFAULT_OPPONENT }
 }
 
-watch([scenario, riskPreference, shotsPerTarget], () => {
+watch([scenario, riskPreference, shotsPerTarget, modelLevel, shotType], () => {
   isStale.value = true
 }, { deep: true })
 
@@ -201,12 +267,10 @@ function capitalize(value: string) {
 
 const setupSummary = computed(() => {
   const spread = `${shotAccuracy.value.sideErrorM.toFixed(1)}/${shotAccuracy.value.depthErrorM.toFixed(1)} m`
-  return [
-    capitalize(surface.value),
-    capitalize(shotAccuracy.value.level),
-    spread,
-    RISK_PRESETS[riskPreference.value].label,
-  ].join(' · ')
+  const parts = [capitalize(surface.value), capitalize(shotAccuracy.value.level)]
+  if (modelLevel.value === 'detailed') parts.push(SHOT_TYPE_PROFILES[shotType.value].label)
+  parts.push(spread, RISK_PRESETS[riskPreference.value].label)
+  return parts.join(' · ')
 })
 
 function syncNarrow() {
@@ -266,6 +330,8 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="header-actions">
+        <SegmentedControl v-if="!isNarrow" class="model-level" :options="modelLevelOptions" :model-value="modelLevel"
+          ariaLabel="Model level" @update:model-value="modelLevel = $event" />
         <p class="disclaimer">
           <span class="disclaimer-dot" aria-hidden="true" />
           Model estimates · illustrative values
@@ -294,11 +360,16 @@ onUnmounted(() => {
         <h2 id="setup-title">Setup</h2>
         <button ref="doneButton" type="button" class="done" @click="closeSetup">Done</button>
       </div>
+      <div v-if="isNarrow" class="setup-model-level">
+        <SegmentedControl :options="modelLevelOptions" :model-value="modelLevel" ariaLabel="Model level"
+          @update:model-value="modelLevel = $event" />
+      </div>
       <LeftSidebar :surface="surface" :you="you" :opponent="opponent" :shot-accuracy="shotAccuracy"
-        :opponent-skill="opponentSkill" @select-surface="surface = $event" @reset-positions="resetPositions"
-        @select-accuracy="selectAccuracy" @update-side-error="setSideError" @update-depth-error="setDepthError"
-        @update-ball-speed="setBallSpeed" @select-opponent-skill="selectOpponentSkill" @update-run-speed="setRunSpeed"
-        @update-consistency="setConsistency" :risk-preference="riskPreference"
+        :opponent-skill="opponentSkill" :model-level="modelLevel" :shot-type="shotType" :effective-shot="effectiveShot"
+        @select-surface="surface = $event" @reset-positions="resetPositions" @select-accuracy="selectAccuracy"
+        @update-side-error="setSideError" @update-depth-error="setDepthError" @update-ball-speed="setBallSpeed"
+        @select-opponent-skill="selectOpponentSkill" @update-run-speed="setRunSpeed"
+        @update-consistency="setConsistency" @select-shot-type="shotType = $event" :risk-preference="riskPreference"
         @select-risk-preference="riskPreference = $event" :shot-count="shotsPerTarget"
         @select-shot-count="shotsPerTarget = $event" />
       <div class="setup-footer">
@@ -328,7 +399,7 @@ onUnmounted(() => {
             </span>
             <p class="hint">Click anywhere on your opponent's side to test your own target.</p>
           </div>
-          <TennisCourt :surface="surface" :shot-accuracy="shotAccuracy" :you="you" :opponent="opponent"
+          <TennisCourt :surface="surface" :shot-accuracy="effectiveShot" :you="you" :opponent="opponent"
             v-model:target="target" :show-dispersion="showDispersion" :show-trajectory="showTrajectory"
             :show-heatmap="showHeatmap" :show-landings="showLandings" @update:you="you = $event"
             @update:opponent="opponent = $event" :recommended-aim="recommendation?.best.aim" :is-stale="isStale"
@@ -340,14 +411,17 @@ onUnmounted(() => {
         <ModelAnalytics ref="analyticsPanel" :recommended-landings="recommendedLandings"
           :recommended-landing-counts="recommendedLandingCounts" :results="recommendation?.results ?? []"
           :recommended-aim="recommendation?.best.aim" :opponent="opponent" :shots-per-target="shotsPerTarget"
-          :candidate-count="GRID_CELLS * GRID_CELLS" :recommended-outcome="recommendation?.best.outcome"
-          :compute-time-ms="computeTimeMs" :grid-cells="GRID_CELLS" :draws-count="shotsPerTarget" />
+          :candidate-count="candidateCount" :recommended-outcome="recommendation?.best.outcome"
+          :compute-time-ms="computeTimeMs" :grid-cells="GRID_CELLS" :draws-count="shotsPerTarget"
+          :show-rally-win="modelLevel === 'detailed'" />
       </div>
-      <RightSidebar :aim="target" :opponent="opponent" :outcome="outcome" :coverage-m="coverage"
-        :recommended="recommendation?.best ?? null" :recommended-coverage-m="recommendedCoverage"
-        :candidate-count="GRID_CELLS * GRID_CELLS" :shots-per-target="shotsPerTarget" :is-calculating="isCalculating"
-        :shown-shot="shownShot" :safest="safest" :highest-win="highestWin" :is-stale="isStale"
-        :results="recommendation?.results ?? []" @calculate="calculateRecommendation" @show-on-court="showOnCourt" />
+      <RightSidebar :aim="target" :opponent="opponent" :outcome="outcome" :interception="targetInterception"
+        :recommended="recommendation?.best ?? null" :recommended-interception="recommendedInterception"
+        :candidate-count="candidateCount" :shots-per-target="shotsPerTarget" :is-calculating="isCalculating"
+        :range-note="targetRangeNote" :shown-shot="shownShot" :safest="safest" :highest-win="highestWin"
+        :is-stale="isStale" :results="recommendation?.results ?? []" :show-rally-win="modelLevel === 'detailed'"
+        @calculate="calculateRecommendation"
+        @show-on-court="showOnCourt" />
     </main>
   </div>
 </template>
@@ -417,6 +491,10 @@ onUnmounted(() => {
     flex: none;
     align-items: center;
     gap: 1rem;
+
+    .model-level {
+      margin-top: 0;
+    }
   }
 
   .disclaimer {
@@ -509,7 +587,7 @@ main {
     }
 
     .status {
-      --status-color: #6fd08c;
+      --status-color: var(--green);
 
       display: inline-flex;
       align-items: center;
@@ -526,6 +604,10 @@ main {
       &.is-stale {
         --status-color: #f2b84b;
         cursor: pointer;
+
+        .recalculate {
+          color: var(--green);
+        }
 
         &:hover .recalculate {
           text-decoration: underline;
@@ -650,7 +732,7 @@ main {
       padding: 0;
       border: none;
       background: transparent;
-      color: #6fd08c;
+      color: var(--green);
       font: inherit;
       font-size: 1.3rem;
       font-weight: 600;
@@ -690,6 +772,16 @@ main {
       border: none;
       border-radius: 0;
       background: var(--layout-bg-color);
+    }
+  }
+
+  .setup-model-level {
+    flex: none;
+    padding: 1.2rem 1.6rem 0;
+    background: var(--layout-bg-color);
+
+    :deep(.options) {
+      margin-top: 0;
     }
   }
 
@@ -741,7 +833,7 @@ main {
     padding: 1.3rem 1.6rem;
     border: none;
     border-radius: 1rem;
-    background: #6fd08c;
+    background: var(--green);
     color: #0b1a10;
     font: inherit;
     font-size: 1.5rem;

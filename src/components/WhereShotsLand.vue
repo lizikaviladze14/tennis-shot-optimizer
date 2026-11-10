@@ -17,7 +17,7 @@ const kindColor: Record<LandingKind, string> = {
     netShort: '#e88980',
 }
 
-const recommendedColor = '#6fd08c'
+const recommendedColor = 'var(--green)'
 const landingRadius = 0.1
 const recommendedRingRadius = 0.32
 </script>

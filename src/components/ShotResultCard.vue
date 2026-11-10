@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import IconInfo from '@/assets/icons/icon-info.vue'
 import { metresInsideSideline, metresPastNet, metresRightOfCenter, targetLabel } from '@/math/describeTarget'
 import { distance, type CourtPoint } from '@/math/point'
+import type { Interception } from '@/math/opponent'
 import type { ShotOutcome } from '@/math/simulation'
 import { formatPercent } from '@/utils/formatPercent'
 
@@ -11,12 +12,16 @@ const props = withDefaults(defineProps<{
     aim: CourtPoint
     opponent: CourtPoint
     outcome: ShotOutcome
-    coverageM: number
+    interception: Interception
     accentColor?: string
     isActive?: boolean
+    rangeNote?: string
+    showRallyWin?: boolean
 }>(), {
     accentColor: 'var(--text-color-primary)',
     isActive: false,
+    rangeNote: undefined,
+    showRallyWin: false,
 })
 
 const emit = defineEmits<{
@@ -38,19 +43,32 @@ const sentence = computed(() => {
     const sideline = inside >= 0
         ? `and still ${inside.toFixed(1)} m inside the sideline`
         : `and ${Math.abs(inside).toFixed(1)} m outside the sideline`
-    const coverage = `They can cover ${props.coverageM.toFixed(1)} m before this ball arrives.`
-    return `Lands ${fromOpponent} m from your opponent ${sideline}. ${coverage}`
+    const { afterBounceM, distanceNeededM, coverageM, marginM } = props.interception
+    const metres = (value: number) => value.toFixed(1)
+    const where = afterBounceM < 0.1
+        ? `They'd have to reach the landing spot: ${metres(distanceNeededM)} m away, with ${metres(coverageM)} m of reach.`
+        : `They'd play it about ${metres(afterBounceM)} m after the bounce: they need ${metres(distanceNeededM)} m and can cover ${metres(coverageM)} m.`
+    const spare = marginM > 0
+        ? ` Short by ${metres(marginM)} m.`
+        : ` ${metres(-marginM)} m to spare.`
+    return `Lands ${fromOpponent} m from your opponent ${sideline}. ${where}${spare}`
 })
 
 function percent(fraction: number) {
     return Math.round(fraction * 100)
 }
 
-const rows = computed(() => [
-    { id: 'in', label: 'Lands in', shortLabel: 'Lands in', value: props.outcome.pIn },
-    { id: 'return', label: 'Opponent gets it back (if in)', shortLabel: 'Opponent gets it back', value: props.outcome.pReturnGivenIn },
-    { id: 'win', label: 'Wins the point', shortLabel: 'Wins outright', value: props.outcome.pWin },
-])
+const rows = computed(() => {
+    const list = [
+        { id: 'in', label: 'Lands in', shortLabel: 'Lands in', value: props.outcome.pIn },
+        { id: 'return', label: 'Opponent gets it back (if in)', shortLabel: 'Opponent gets it back', value: props.outcome.pReturnGivenIn },
+        { id: 'win', label: 'Wins the point', shortLabel: 'Wins outright', value: props.outcome.pWin },
+    ]
+    if (props.showRallyWin) {
+        list.push({ id: 'rally', label: 'Wins the rally', shortLabel: 'Wins the rally', value: props.outcome.pRallyWin })
+    }
+    return list
+})
 </script>
 
 <template>
@@ -65,6 +83,7 @@ const rows = computed(() => [
             <span class="ring" aria-hidden="true" />
             <h2>{{ title }}</h2>
         </div>
+        <p v-if="rangeNote" class="range-note">{{ rangeNote }}</p>
         <p class="position">{{ position }}</p>
 
         <p class="sentence">{{ sentence }}</p>
@@ -96,7 +115,8 @@ const rows = computed(() => [
 .shot-result-card {
     --result-in-color: var(--text-color-primary);
     --result-return-color: #f0a070;
-    --result-win-color: #6fd08c;
+    --result-win-color: var(--green);
+    --result-rally-color: color-mix(in srgb, var(--green) 55%, white);
 
     padding: 1.6rem;
 
@@ -173,6 +193,14 @@ const rows = computed(() => [
             font-size: 1.8rem;
             font-weight: 700;
         }
+    }
+
+    .range-note {
+        margin-top: 0.6rem;
+        padding-left: 2.4rem;
+        color: var(--text-color-secondary);
+        font-size: 1.2rem;
+        line-height: 1.45;
     }
 
     .position {
@@ -261,6 +289,16 @@ const rows = computed(() => [
                 background: var(--result-win-color);
             }
         }
+
+        .row-rally {
+            .value {
+                color: var(--result-rally-color);
+            }
+
+            .bar-fill {
+                background: var(--result-rally-color);
+            }
+        }
     }
 
     .note {
@@ -284,6 +322,7 @@ const rows = computed(() => [
         padding: 1.4rem 1.4rem 1.2rem;
 
         .heading {
+
             .on-court,
             .show-on-court {
                 display: none;
@@ -297,6 +336,10 @@ const rows = computed(() => [
         .rows {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
+
+            &:has(.row-rally) {
+                grid-template-columns: 1fr 1fr;
+            }
             gap: 0.8rem;
             margin-top: 1.2rem;
             padding: 1.2rem 0.6rem;

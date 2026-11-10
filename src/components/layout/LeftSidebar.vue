@@ -9,6 +9,8 @@ import { OPPONENT_SKILL_PRESETS, type OpponentSkill, type OpponentSkillLevel } f
 import SegmentedControl from '@/components/base/SegmentedControl.vue'
 import { RISK_PRESETS, type RiskPreference } from '@/types/riskPreference'
 import { DEFAULT_SHOT_COUNT, SHOT_COUNT_OPTIONS, type ShotCount, type ShotCountId } from '@/types/shotCount'
+import type { ModelLevel } from '@/types/modelLevel'
+import { SHOT_TYPE_PROFILES, type ShotType } from '@/types/shotTypes'
 
 const props = withDefaults(defineProps<{
     surface?: TennisCourtSurface,
@@ -18,6 +20,9 @@ const props = withDefaults(defineProps<{
     opponentSkill?: OpponentSkill,
     riskPreference?: RiskPreference,
     shotCount?: ShotCount,
+    modelLevel?: ModelLevel,
+    shotType?: ShotType,
+    effectiveShot?: ShotAccuracy,
 }>(), {
     surface: 'hard',
     you: () => ({ ...DEFAULT_YOU }),
@@ -26,6 +31,9 @@ const props = withDefaults(defineProps<{
     opponentSkill: () => ({ level: 'advanced', ...OPPONENT_SKILL_PRESETS.advanced }),
     riskPreference: 'balanced',
     shotCount: DEFAULT_SHOT_COUNT,
+    modelLevel: 'simple',
+    shotType: 'drive',
+    effectiveShot: () => ({ level: 'advanced', ...SHOT_ACCURACY_PRESETS.advanced }),
 })
 
 const emit = defineEmits<{
@@ -40,6 +48,7 @@ const emit = defineEmits<{
     updateConsistency: [fraction: number]
     selectRiskPreference: [preference: RiskPreference]
     selectShotCount: [count: ShotCount]
+    selectShotType: [shotType: ShotType]
 }>()
 
 const surfaces: { id: TennisCourtSurface; label: string }[] = [
@@ -66,6 +75,21 @@ const riskPreferences = (Object.keys(RISK_PRESETS) as RiskPreference[]).map((id)
 }))
 
 const shotCountOptions = SHOT_COUNT_OPTIONS.map(({ id, label }) => ({ id, label }))
+const shotTypeOptions = (Object.keys(SHOT_TYPE_PROFILES) as ShotType[]).map((id) => ({
+    id,
+    label: id === 'drop' ? 'DropShot' : SHOT_TYPE_PROFILES[id].label,
+}))
+
+const effectiveShotLine = computed(() => {
+    const shot = props.effectiveShot
+    const profile = SHOT_TYPE_PROFILES[props.shotType]
+    const minSpeed = shot.ballSpeedMps * profile.minDepthSpeedFactor
+    const maxSpeed = shot.ballSpeedMps
+    const speed = minSpeed === maxSpeed
+        ? `${maxSpeed.toFixed(1)} m/s`
+        : `${minSpeed.toFixed(1)}–${maxSpeed.toFixed(1)} m/s`
+    return `${profile.label} uses: ± ${shot.sideErrorM.toFixed(2)} m side · ± ${shot.depthErrorM.toFixed(2)} m depth · ${speed}`
+})
 const shotCountId = computed<ShotCountId>(() => String(props.shotCount) as ShotCountId)
 
 function onSelectShotCount(id: ShotCountId) {
@@ -145,16 +169,24 @@ const opponentDescription = computed(() => describePlayerPosition('opponent', pr
                         </div>
                     </div>
                 </div>
-                <p class="hint">Drag the markers on the court. With a marker focused, the arrow keys move it 25 cm, Shift + arrows 1 m.</p>
+                <p class="hint">Drag the markers on the court. With a marker focused, the arrow keys move it 25 cm,
+                    Shift +
+                    arrows 1 m.</p>
             </div>
         </section>
 
         <section class="shot-accuracy">
             <div class="content-wrapper">
                 <h3>Your shot</h3>
+                <template v-if="modelLevel === 'detailed'">
+                    <div class="control-label">Shot type</div>
+                    <SegmentedControl :options="shotTypeOptions" :model-value="shotType" ariaLabel="Shot type"
+                        @update:model-value="emit('selectShotType', $event)" />
+                    <div class="control-label level">Level</div>
+                </template>
                 <SegmentedControl :options="accuracyLevels" :model-value="shotAccuracy.level" ariaLabel="Shot accuracy"
                     @update:model-value="emit('selectAccuracy', $event)" />
-                <div class="spread">
+                <div v-if="modelLevel !== 'detailed'" class="spread">
                     <div class="spread-mark" aria-hidden="true">
                         <svg viewBox="0 0 72 72">
                             <line x1="36" y1="6" x2="36" y2="66" />
@@ -194,7 +226,10 @@ const opponentDescription = computed(() => describePlayerPosition('opponent', pr
                     <input type="range" :value="ballSpeedMps" min="12" max="35" step="0.5" aria-label="Ball speed"
                         @input="emit('updateBallSpeed', onRangeInput($event))" />
                 </div>
-                <p class="hint">Errors are one standard deviation of where your shots land around the point you aim at.
+                <p v-if="modelLevel === 'detailed'" class="effective-shot">{{ effectiveShotLine }}</p>
+                <p v-if="modelLevel !== 'detailed'" class="hint">Errors are one standard deviation of where your shots
+                    land
+                    around the point you aim at.
                     Ball speed is an illustrative average, including the bounce.</p>
             </div>
         </section>
@@ -530,11 +565,35 @@ section {
         }
     }
 
+    &.shot-accuracy {
+        .control-label {
+            margin-top: 1.4rem;
+            color: var(--text-color-primary);
+            font-size: 1.1rem;
+            font-weight: 600;
+
+            &.level {
+                margin-top: 1.6rem;
+            }
+        }
+
+        :deep(.option.is-selected) {
+            font-weight: 700;
+        }
+
+        .effective-shot {
+            margin-top: 1.4rem;
+            color: var(--text-color-secondary);
+            font-size: 1.2rem;
+            line-height: 1.45;
+        }
+    }
+
     &.simulation {
         .control-label {
             margin-top: 1.4rem;
             color: var(--text-color-primary);
-            font-size: 1.3rem;
+            font-size: 1.1rem;
             font-weight: 600;
         }
 

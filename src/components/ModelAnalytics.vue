@@ -21,6 +21,7 @@ defineProps<{
     computeTimeMs?: number | null
     gridCells: number
     drawsCount: number
+    showRallyWin?: boolean
 }>()
 
 const isOpen = ref(true)
@@ -80,7 +81,8 @@ defineExpose({ revealExplainer })
                 :recommended-aim="recommendedAim" :shots-per-target="shotsPerTarget" />
             <TargetValueMap :results="results" :recommended-aim="recommendedAim" :opponent="opponent" />
             <SimulationRun v-if="recommendedOutcome && computeTimeMs != null" :candidate-count="candidateCount"
-                :shots-per-target="shotsPerTarget" :outcome="recommendedOutcome" :compute-time-ms="computeTimeMs" />
+                :shots-per-target="shotsPerTarget" :outcome="recommendedOutcome" :compute-time-ms="computeTimeMs"
+                :show-rally-win="showRallyWin" />
             <ModelExplainerCard id="how-the-model-works" class="explainer" :grid-cells="gridCells"
                 :draws-count="drawsCount" :highlighted="explainerHighlighted" />
         </div>

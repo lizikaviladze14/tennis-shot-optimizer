@@ -7,20 +7,23 @@ import { landingPoint } from './landing'
 import { isPointInCourt } from './shotScore'
 import { Z_95 } from './modelConstants'
 
+/** Which chance to rank by. Simple mode uses an outright winner; Detailed uses the rally. */
+export type WinMetric = 'pWin' | 'pRallyWin'
+
 /**
  * The aim most likely to land in.
- * Ties go to the higher P(win), then to the first aim in grid order.
+ * Ties go to the higher value of `metric`, then to the first aim in grid order.
  */
-export function safestResult(results: AimResult[]): AimResult {
+export function safestResult(results: AimResult[], metric: WinMetric = 'pWin'): AimResult {
   let safest = results[0]
   if (!safest) {
     throw new Error('safestResult: no results to compare')
   }
 
   for (const result of results) {
-    const { pIn, pWin } = result.outcome
+    const { pIn } = result.outcome
     const best = safest.outcome
-    if (pIn > best.pIn || (pIn === best.pIn && pWin > best.pWin)) {
+    if (pIn > best.pIn || (pIn === best.pIn && result.outcome[metric] > best[metric])) {
       safest = result
     }
   }
@@ -29,19 +32,19 @@ export function safestResult(results: AimResult[]): AimResult {
 }
 
 /**
- * The aim most likely to win the point outright.
+ * The aim most likely to win, outright or as a rally, depending on `metric`.
  * Ties go to the higher P(in), then to the first aim in grid order.
  */
-export function highestWinResult(results: AimResult[]): AimResult {
+export function highestWinResult(results: AimResult[], metric: WinMetric = 'pWin'): AimResult {
   let highestWin = results[0]
   if (!highestWin) {
     throw new Error('highestWinResult: no results to compare')
   }
 
   for (const result of results) {
-    const { pIn, pWin } = result.outcome
+    const score = result.outcome[metric]
     const best = highestWin.outcome
-    if (pWin > best.pWin || (pWin === best.pWin && pIn > best.pIn)) {
+    if (score > best[metric] || (score === best[metric] && result.outcome.pIn > best.pIn)) {
       highestWin = result
     }
   }

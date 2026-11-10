@@ -4,17 +4,18 @@ import {
   SINGLES_LEFT_Y_M,
   SINGLES_RIGHT_Y_M,
 } from './courtGeometry'
+import { metresPastNet } from './describeTarget'
 import type { CourtPoint } from './point'
 import type { StandardDraw } from './random'
 import { estimateShotOutcome, type ShotOutcome, type ShotScenario } from './simulation'
 
 /**
- * Score used to compare aims: P(win) − riskWeight × P(miss).
+ * Score used to compare aims: P(rally win) − riskWeight × P(miss).
  * Equivalent to the expected points per shot when a win scores +1,
- * a returned ball scores 0, and a miss scores −riskWeight.
+ * a return scores q (the chance to still win the rally), and a miss scores −riskWeight.
  *
  * Not a probability: it can be negative when riskWeight > 0.
- * riskWeight (λ) = 0 ranks by P(win) alone; larger values penalize misses more.
+ * riskWeight (λ) = 0 ranks by P(rally win) alone; larger values penalize misses more.
  *
  * Only meaningful for comparison. The grid search maximizes it to pick the
  * recommended aim. riskWeight doesn't change any aim's probabilities, only
@@ -24,9 +25,9 @@ export function shotValue(outcome: ShotOutcome, riskWeight: number): number {
   if (riskWeight < 0) {
     throw new Error('shotValue: riskWeight must be 0 or greater')
   }
-  const { pIn, pWin } = outcome
+  const { pIn, pRallyWin } = outcome
   const pMiss = 1 - pIn
-  const value = pWin - riskWeight * pMiss
+  const value = pRallyWin - riskWeight * pMiss
   return value
 }
 
@@ -72,9 +73,15 @@ export function findBestAim(
   draws: StandardDraw[],
   riskWeight: number,
   cellCount: number,
+  pastNetRange?: { min: number; max: number },
 ): { best: AimResult; results: AimResult[] } {
-  const aims = gridAims(cellCount)
-
+  let aims = gridAims(cellCount)
+  if (pastNetRange) {
+    aims = aims.filter((aim) => {
+      const pastNet = metresPastNet(aim)
+      return pastNetRange.min <= pastNet && pastNet <= pastNetRange.max
+    })
+  }
   const results: AimResult[] = []
 
   for (const aim of aims) {
@@ -85,7 +92,7 @@ export function findBestAim(
 
   let best = results[0]
   if (!best) {
-    throw new Error('findBestAim: no aims to compare')
+    throw new Error('findBestAim: no aims in the given range')
   }
 
   for (const result of results) {
