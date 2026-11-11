@@ -49,7 +49,7 @@ watch(showLandings, (value) => emit('update:showLandings', value))
                 <span class="label-full">Simulated landings</span>
                 <span class="label-short">Landings</span>
             </BaseCheckbox>
-            <button type="button" class="play" title="Plays 3× slower than real time"
+            <button type="button" class="play" title="Plays 3× slower than the actual time"
                 :aria-label="isPlaying ? 'Stop the shot animation' : 'Play the shot animation'"
                 @click="emit(isPlaying ? 'stop' : 'play')">
                 <svg v-if="isPlaying" class="icon is-stop" viewBox="0 0 12 12" aria-hidden="true">

@@ -15,7 +15,7 @@ import {
     CENTER_MARK_LENGTH_M,
 } from '@/math/courtGeometry'
 import type { TennisCourtSurface } from '@/types/tennisCourt'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import type { BallState } from '@/animation/ballPath'
 import { isOnOpponentHalf, isPointInCourt } from '@/math/shotScore'
 import { SHOT_ACCURACY_PRESETS, type ShotAccuracy } from '@/types/shotAccuracy'
@@ -38,6 +38,8 @@ interface Props {
     showHeatmap?: boolean
     showLandings?: boolean
     recommendedAim?: CourtPoint
+    recommendedShot?: { depthErrorM: number; sideErrorM: number }
+    recommendedHitter?: CourtPoint
     isStale?: boolean
     shownShot?: 'target' | 'recommended' | 'alternative'
     alternativeAim?: CourtPoint
@@ -47,6 +49,7 @@ interface Props {
     vertical?: boolean
     ballState?: BallState | null
     bouncePoint?: CourtPoint | null
+    isCalculating?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -63,6 +66,8 @@ const props = withDefaults(defineProps<Props>(), {
     showHeatmap: false,
     showLandings: false,
     recommendedAim: undefined,
+    recommendedShot: undefined,
+    recommendedHitter: undefined,
     isStale: false,
     shownShot: 'target',
     alternativeAim: undefined,
@@ -72,6 +77,7 @@ const props = withDefaults(defineProps<Props>(), {
     vertical: false,
     ballState: null,
     bouncePoint: null,
+    isCalculating: false,
 })
 
 const emit = defineEmits<{
@@ -111,18 +117,15 @@ const playerMarkerDotRadius = 0.26
 const playerMarkerOutlineOpacity = 0.28
 const playerMarkerLabelGap = 0.25
 
-// target
-const targetInnerRx = computed(() => props.shotAccuracy.depthErrorM)
-const targetInnerRy = computed(() => props.shotAccuracy.sideErrorM)
-const targetOuterRx = computed(() => props.shotAccuracy.depthErrorM * 2)
-const targetOuterRy = computed(() => props.shotAccuracy.sideErrorM * 2)
-
 const targetDiamondSize = 0.6
 const targetDiamondRadius = 0.08
 const targetDash = 0.2
 const targetDashGap = 0.16
 const shotDash = 0.28
 const shotDashGap = 0.18
+// Outer ring uses pathLength="100", so these are fractions of the circumference.
+const outerDash = 1.4
+const outerDashGap = 1.1
 
 // recommended aim
 const recommendedColor = 'var(--green)'
@@ -133,10 +136,111 @@ const recommendedDotRadius = 0.1
 const alternativeColor = 'var(--text-color-primary)'
 const alternativeLabelWidth = computed(() => props.alternativeLabel.length * 0.17 + 0.5)
 
+const RECOMMENDED_GLIDE_MS = 400
+
+type RecommendedDisplay = {
+    x: number
+    y: number
+    angle: number
+    innerRx: number
+    innerRy: number
+    outerRx: number
+    outerRy: number
+}
+
+const displayedRecommended = ref<RecommendedDisplay | null>(null)
+let glideFrame: number | null = null
+
+function prefersReducedMotion() {
+    return (
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    )
+}
+
+function easeOut(t: number) {
+    return 1 - (1 - t) ** 3
+}
+
+function shortestAngle(from: number, to: number) {
+    const delta = ((to - from + 180) % 360 + 360) % 360 - 180
+    return from + delta
+}
+
+function dispersionRadii(depthErrorM: number, sideErrorM: number) {
+    return {
+        innerRx: depthErrorM,
+        innerRy: sideErrorM,
+        outerRx: depthErrorM * 2,
+        outerRy: sideErrorM * 2,
+    }
+}
+
+watch(
+    () => {
+        const aim = props.recommendedAim
+        if (!aim) return null
+        const shot = props.recommendedShot
+        const depth = shot ? shot.depthErrorM : props.shotAccuracy.depthErrorM
+        const side = shot ? shot.sideErrorM : props.shotAccuracy.sideErrorM
+        const hitter = props.recommendedHitter ?? props.you
+        const angle = Math.atan2(aim.y - hitter.y, aim.x - hitter.x) * (180 / Math.PI)
+        return { x: aim.x, y: aim.y, angle, ...dispersionRadii(depth, side) }
+    },
+    (next) => {
+        if (glideFrame !== null) {
+            cancelAnimationFrame(glideFrame)
+            glideFrame = null
+        }
+        if (!next) {
+            displayedRecommended.value = null
+            return
+        }
+        const from = displayedRecommended.value
+        if (!from || prefersReducedMotion()) {
+            displayedRecommended.value = { ...next }
+            return
+        }
+        const origin = { ...from }
+        const destination = { ...next, angle: shortestAngle(from.angle, next.angle) }
+        const startMs = performance.now()
+        displayedRecommended.value = origin
+        function frame(now: number) {
+            const t = Math.min(1, (now - startMs) / RECOMMENDED_GLIDE_MS)
+            const eased = easeOut(t)
+            const mix = (start: number, end: number) => start + (end - start) * eased
+            displayedRecommended.value = {
+                x: mix(origin.x, destination.x),
+                y: mix(origin.y, destination.y),
+                angle: mix(origin.angle, destination.angle),
+                innerRx: mix(origin.innerRx, destination.innerRx),
+                innerRy: mix(origin.innerRy, destination.innerRy),
+                outerRx: mix(origin.outerRx, destination.outerRx),
+                outerRy: mix(origin.outerRy, destination.outerRy),
+            }
+            if (t < 1) glideFrame = requestAnimationFrame(frame)
+            else glideFrame = null
+        }
+        glideFrame = requestAnimationFrame(frame)
+    },
+    { immediate: true },
+)
+
+onUnmounted(() => {
+    if (glideFrame !== null) cancelAnimationFrame(glideFrame)
+})
+
+const recommendedPoint = computed(() =>
+    displayedRecommended.value
+        ? { x: displayedRecommended.value.x, y: displayedRecommended.value.y }
+        : (props.recommendedAim ?? null),
+)
+
 // the dispersion and trajectory follow the shown shot: recommended, alternative or your target
 const shownShotDrawing = computed(() => {
-    if (props.shownShot === 'recommended' && props.recommendedAim) {
-        return { aim: props.recommendedAim, color: recommendedColor, fromCalculation: true }
+    if (props.shownShot === 'recommended' && recommendedPoint.value) {
+        return { aim: recommendedPoint.value, color: recommendedColor, fromCalculation: true }
     }
     if (props.shownShot === 'alternative' && props.alternativeAim) {
         return { aim: props.alternativeAim, color: alternativeColor, fromCalculation: true }
@@ -144,8 +248,31 @@ const shownShotDrawing = computed(() => {
     return { aim: props.target, color: 'var(--court-target-color)', fromCalculation: false }
 })
 const shotAim = computed(() => shownShotDrawing.value.aim)
+const shotOrigin = computed(() =>
+    shownShotDrawing.value.fromCalculation && props.recommendedHitter ? props.recommendedHitter : props.you,
+)
+const ellipseRadii = computed(() => {
+    if (props.shownShot === 'recommended' && displayedRecommended.value) {
+        const shown = displayedRecommended.value
+        return {
+            innerRx: shown.innerRx,
+            innerRy: shown.innerRy,
+            outerRx: shown.outerRx,
+            outerRy: shown.outerRy,
+        }
+    }
+    if (props.shownShot !== 'target' && props.recommendedShot) {
+        return dispersionRadii(props.recommendedShot.depthErrorM, props.recommendedShot.sideErrorM)
+    }
+    return dispersionRadii(props.shotAccuracy.depthErrorM, props.shotAccuracy.sideErrorM)
+})
 const shotColor = computed(() => shownShotDrawing.value.color)
 const shotOpacity = computed(() => (shownShotDrawing.value.fromCalculation && props.isStale ? 0.5 : 1))
+const innerEllipseOpacity = computed(() =>
+    props.isCalculating && props.shownShot === 'recommended' ? 0.6 : shotOpacity.value,
+)
+const recommendedOpacity = computed(() => (props.isCalculating ? 0.6 : props.isStale ? 0.5 : 1))
+const flowingTrajectory = computed(() => props.isCalculating && props.shownShot === 'recommended')
 
 const overlayOpacity = computed(() => (props.isStale ? 0.5 : 1))
 
@@ -198,8 +325,9 @@ watch(
 )
 
 const shotAngle = computed(() => {
-    const dx = shotAim.value.x - props.you.x
-    const dy = shotAim.value.y - props.you.y
+    if (props.shownShot === 'recommended' && displayedRecommended.value) return displayedRecommended.value.angle
+    const dx = shotAim.value.x - shotOrigin.value.x
+    const dy = shotAim.value.y - shotOrigin.value.y
     return Math.atan2(dy, dx) * (180 / Math.PI)
 })
 
@@ -395,8 +523,8 @@ function clearAimChip(
 
 const aimLabels = computed(() => {
     const target = placeAimChip(toView(props.target), 2.6, targetDiamondSize / Math.SQRT2)
-    const recommended = props.recommendedAim
-        ? clearAimChip(placeAimChip(toView(props.recommendedAim), 2.8, recommendedRingRadius), [target])
+    const recommended = recommendedPoint.value
+        ? clearAimChip(placeAimChip(toView(recommendedPoint.value), 2.8, recommendedRingRadius), [target])
         : null
     const alternative =
         props.shownShot === 'alternative' && props.alternativeAim
@@ -503,22 +631,29 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                         :cy="courtY + landing.point.y" r="0.12" :fill="landingColor[landing.kind]"
                         :opacity="landing.kind === 'in' ? 0.9 : 0.85" />
                 </g>
-                <g :opacity="shotOpacity" pointer-events="none">
+                <g pointer-events="none">
                     <!-- Dispersion ellipse around the shown shot -->
                     <g v-if="showDispersion"
                         :transform="`rotate(${shotAngle} ${courtX + shotAim.x} ${courtY + shotAim.y})`">
-                        <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="targetOuterRx"
-                            :ry="targetOuterRy" :fill="shotColor" opacity="0.12" />
-                        <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="targetOuterRx"
-                            :ry="targetOuterRy" fill="none" :stroke="shotColor" stroke-width="0.04"
-                            :stroke-dasharray="`${targetDash} ${targetDashGap}`" />
-                        <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="targetInnerRx"
-                            :ry="targetInnerRy" fill="none" :stroke="shotColor" stroke-width="0.05" />
+                        <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="ellipseRadii.outerRx"
+                            :ry="ellipseRadii.outerRy" :fill="shotColor" :opacity="0.12 * shotOpacity" />
+                        <ellipse class="dispersion-ring" :class="{ 'is-flowing': flowingTrajectory }"
+                            :pathLength="shownShot === 'recommended' ? 100 : undefined"
+                            :style="shownShot === 'recommended' ? { '--dash-cycle': String(outerDash + outerDashGap), strokeDasharray: `${outerDash} ${outerDashGap}` } : undefined"
+                            :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="ellipseRadii.outerRx"
+                            :ry="ellipseRadii.outerRy" fill="none" :stroke="shotColor" stroke-width="0.04"
+                            :stroke-dasharray="shownShot === 'recommended' ? `${outerDash} ${outerDashGap}` : `${targetDash} ${targetDashGap}`"
+                            :opacity="shotOpacity" />
+                        <ellipse :cx="courtX + shotAim.x" :cy="courtY + shotAim.y" :rx="ellipseRadii.innerRx"
+                            :ry="ellipseRadii.innerRy" fill="none" :stroke="shotColor" stroke-width="0.05"
+                            :opacity="innerEllipseOpacity" />
                     </g>
                     <!-- Shot from you to the shown aim -->
-                    <line v-if="showTrajectory" :x1="courtX + you.x" :y1="courtY + you.y" :x2="courtX + shotAim.x"
-                        :y2="courtY + shotAim.y" fill="none" :stroke="shotColor" stroke-width="0.04"
-                        :stroke-dasharray="`${shotDash} ${shotDashGap}`" />
+                    <line v-if="showTrajectory" class="shot-line" :class="{ 'is-flowing': flowingTrajectory }"
+                        :style="{ '--dash-cycle': String(shotDash + shotDashGap) }" :x1="courtX + shotOrigin.x"
+                        :y1="courtY + shotOrigin.y" :x2="courtX + shotAim.x" :y2="courtY + shotAim.y" fill="none"
+                        :stroke="shotColor" stroke-width="0.04" :stroke-dasharray="`${shotDash} ${shotDashGap}`"
+                        :opacity="shotOpacity" />
                 </g>
 
                 <!-- Target marker -->
@@ -528,8 +663,8 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                     :transform-origin="`${courtX + target.x} ${courtY + target.y}`" pointer-events="none" />
 
                 <!-- Recommended aim: ring with a dot -->
-                <g v-if="recommendedAim" :opacity="isStale ? 0.5 : 1" pointer-events="none"
-                    :transform="`translate(${courtX + recommendedAim.x} ${courtY + recommendedAim.y})`">
+                <g v-if="recommendedPoint" :opacity="recommendedOpacity" pointer-events="none"
+                    :transform="`translate(${courtX + recommendedPoint.x} ${courtY + recommendedPoint.y})`">
                     <circle :r="recommendedRingRadius" fill="rgba(0, 0, 0, 0.35)" :stroke="recommendedColor"
                         stroke-width="0.08" />
                     <circle :r="recommendedDotRadius" :fill="recommendedColor" />
@@ -617,7 +752,7 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                     target</text>
             </g>
 
-            <g v-if="recommendedAim && aimLabels.recommended" :opacity="isStale ? 0.5 : 1" pointer-events="none"
+            <g v-if="recommendedPoint && aimLabels.recommended" :opacity="isStale ? 0.5 : 1" pointer-events="none"
                 :transform="`translate(${aimLabels.recommended.x} ${aimLabels.recommended.y})`">
                 <rect x="0" y="-0.28" :width="aimLabels.recommended.width" height="0.56" rx="0.28"
                     :fill="recommendedColor" />
@@ -741,6 +876,11 @@ svg {
         pointer-events: none;
         animation: bounce-ring 500ms ease-out forwards;
     }
+
+    .shot-line.is-flowing,
+    .dispersion-ring.is-flowing {
+        animation: shot-dash-flow 0.8s linear infinite;
+    }
 }
 
 @keyframes bounce-ring {
@@ -755,10 +895,21 @@ svg {
     }
 }
 
+@keyframes shot-dash-flow {
+    to {
+        stroke-dashoffset: calc(var(--dash-cycle) * -1px);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     svg .bounce-ring {
         animation: none;
         opacity: 0.6;
+    }
+
+    svg .shot-line.is-flowing,
+    svg .dispersion-ring.is-flowing {
+        animation: none;
     }
 }
 </style>

@@ -94,7 +94,10 @@ function percent(fraction: number) {
 
 <template>
     <section class="compare-alternatives" :class="{ 'is-stale': isStale }">
-        <h3>Compare alternatives</h3>
+        <div class="heading">
+            <h3>Compare alternatives</h3>
+            <p v-if="isStale" class="out-of-date">Out of date</p>
+        </div>
         <ul>
             <li v-for="row in rows" :key="row.id">
                 <button type="button" class="row" :class="[`row-${row.marker}`, { 'is-shown': isShown(row) }]"
@@ -144,10 +147,22 @@ function percent(fraction: number) {
     background-color: var(--layout-bg-color);
     border: 1px solid var(--layout-border-color);
     border-radius: var(--border-radius);
-    transition: opacity 0.15s ease;
 
-    &.is-stale {
-        opacity: 0.6;
+    &.is-stale .stats,
+    &.is-stale .badge {
+        opacity: 0.55;
+    }
+
+    .heading {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .out-of-date {
+        color: var(--text-color-secondary);
+        font-size: 1.1rem;
     }
 
     h3 {

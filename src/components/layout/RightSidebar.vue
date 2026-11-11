@@ -63,8 +63,8 @@ const emit = defineEmits<{
             <ShotResultCard v-if="recommended && recommendedInterception" class="recommended"
                 heading="Recommended shot" :aim="recommended.aim" :opponent="opponent" :outcome="recommended.outcome"
                 :interception="recommendedInterception" accent-color="var(--green)" :show-rally-win="showRallyWin"
-                :is-active="shownShot === 'recommended'"
-                @show-on-court="emit('showOnCourt', 'recommended')" />
+                :is-active="shownShot === 'recommended'" :is-stale="isStale"
+                @show-on-court="emit('showOnCourt', 'recommended')" @recalculate="emit('calculate')" />
             <ShotResultCard class="your-target" heading="Your target" :aim="aim" :opponent="opponent" :outcome="outcome"
                 :interception="interception" accent-color="var(--court-target-color)" :range-note="rangeNote"
                 :show-rally-win="showRallyWin"

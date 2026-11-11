@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, toRaw } from 'vue'
 import TennisCourt from './components/court/TennisCourt.vue'
 import LeftSidebar from './components/layout/LeftSidebar.vue'
 import RightSidebar from './components/layout/RightSidebar.vue'
@@ -20,7 +20,8 @@ import { OPPONENT_SKILL_PRESETS, type OpponentSkill, type OpponentSkillLevel } f
 import { RISK_PRESETS, type RiskPreference } from '@/types/riskPreference'
 import { DEFAULT_SHOT_COUNT, type ShotCount } from '@/types/shotCount'
 import CourtControls from './components/court/CourtControls.vue'
-import { findBestAim, type AimResult } from '@/math/optimizer'
+import type { AimResult } from '@/math/optimizer'
+import type { StandardDraw } from '@/math/random'
 import { GRID_CELLS, PLAYABLE_WINDOW_S, RETURN_VALUE_AT_BASELINE, RETURN_VALUE_AT_NET } from '@/math/modelConstants'
 import { highestWinResult, safestResult, type WinMetric } from '@/math/analytics'
 import type { ShownShot } from '@/types/shownShot'
@@ -64,14 +65,14 @@ const pastNetRange = computed(() => {
 const bounce = computed(() =>
   modelLevel.value === 'detailed'
     ? {
-        afterBounceSpeedMps:
-          effectiveShot.value.ballSpeedMps * SHOT_TYPE_PROFILES[shotType.value].afterBounceSpeedFactor,
-        playableWindowS: PLAYABLE_WINDOW_S,
-      }
+      afterBounceSpeedMps:
+        effectiveShot.value.ballSpeedMps * SHOT_TYPE_PROFILES[shotType.value].afterBounceSpeedFactor,
+      playableWindowS: PLAYABLE_WINDOW_S,
+    }
     : {
-        afterBounceSpeedMps: effectiveShot.value.ballSpeedMps,
-        playableWindowS: 0,
-      },
+      afterBounceSpeedMps: effectiveShot.value.ballSpeedMps,
+      playableWindowS: 0,
+    },
 )
 
 const depthSpeed = computed(() => {
@@ -148,7 +149,8 @@ const outcome = computed(() => estimateShotOutcome(scenario.value, target.value,
 const targetInterception = computed(() => aimInterception(scenario.value, target.value))
 
 const riskWeight = computed(() => RISK_PRESETS[riskPreference.value].riskWeight)
-const recommendation = ref<{ best: AimResult, results: AimResult[] } | null>(null)
+const recommendation = ref<{ best: AimResult; results: AimResult[]; scenario: ShotScenario } | null>(null)
+const appliedDraws = ref<StandardDraw[]>([])
 const isStale = ref(false)
 const shownShot = ref<ShownShot>('target')
 
@@ -194,8 +196,11 @@ function playShownShot() {
   const aim = shownAim.value
   if (!aim) return
   if (shownShot.value === 'recommended' && isStale.value) return
-  const { ballSpeedMps, bounce } = aimShotSettings(scenario.value, aim)
-  play(createBallPath(you.value, aim, ballSpeedMps, bounce))
+  const saved = shownShot.value !== 'target' ? recommendation.value?.scenario : undefined
+  const settings = saved ?? scenario.value
+  const from = saved?.hitter ?? you.value
+  const { ballSpeedMps, bounce: shotBounce } = aimShotSettings(settings, aim)
+  play(createBallPath(from, aim, ballSpeedMps, shotBounce))
 }
 
 function onDragStart() {
@@ -207,11 +212,11 @@ function onDragEnd() {
   if (shownShot.value === 'target') playShownShot()
 }
 
-const recommendedLandings = computed(() =>
-  recommendation.value
-    ? simulatedLandings(you.value, recommendation.value.best.aim, effectiveShot.value, draws.value)
-    : [],
-)
+const recommendedLandings = computed(() => {
+  const saved = recommendation.value
+  if (!saved) return []
+  return simulatedLandings(saved.scenario.hitter, saved.best.aim, saved.scenario.shot, appliedDraws.value)
+})
 
 const recommendedLandingCounts = computed(() => landingCounts(recommendedLandings.value))
 
@@ -240,37 +245,148 @@ const targetRangeNote = computed(() => {
   return undefined
 })
 
-const MIN_LOADER_MS = 400
+const MIN_CALCULATING_MS = 350
+const RECOMMENDED_GLIDE_MS = 400
 const isCalculating = ref(false)
 const computeTimeMs = ref<number | null>(null)
-
-function nextPaint() {
-  return new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve)))
-}
 
 function wait(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
-async function calculateRecommendation() {
-  if (isCalculating.value) return
+/** Set while a discrete choice is flushing, so that change is not marked stale. */
+let autoRecalc = false
+
+type OptimizerResult = { best: AimResult; results: AimResult[] }
+
+let worker: Worker | null = null
+let requestId = 0
+let rejectActive: ((reason: unknown) => void) | null = null
+let shotAfterGlide: ReturnType<typeof setTimeout> | null = null
+
+function toPlain<T>(value: T): T {
+  if (typeof value !== 'object' || value === null) return value
+  const raw = toRaw(value as object) as T
+  if (Array.isArray(raw)) return raw.map((item) => toPlain(item)) as T
+  const copy: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(raw as object)) copy[key] = toPlain(item)
+  return copy as T
+}
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function clearShotAfterGlide() {
+  if (shotAfterGlide !== null) {
+    clearTimeout(shotAfterGlide)
+    shotAfterGlide = null
+  }
+}
+
+function playAfterGlide(hadAim: boolean) {
+  clearShotAfterGlide()
+  if (!hadAim || prefersReducedMotion()) {
+    playShownShot()
+    return
+  }
+  shotAfterGlide = setTimeout(() => {
+    shotAfterGlide = null
+    if (shownShot.value === 'recommended') playShownShot()
+  }, RECOMMENDED_GLIDE_MS)
+}
+
+/** Latest request wins: a newer call cancels the search still running. */
+function runFindBestAim(input: {
+  scenario: ShotScenario
+  draws: StandardDraw[]
+  riskWeight: number
+  cellCount: number
+  pastNetRange?: { min: number; max: number }
+}): Promise<OptimizerResult> {
+  rejectActive?.(new Error('superseded'))
+  rejectActive = null
+  worker?.terminate()
+  const current = new Worker(new URL('./workers/optimizer.worker.ts', import.meta.url), { type: 'module' })
+  worker = current
+  const id = ++requestId
+  return new Promise((resolve, reject) => {
+    rejectActive = reject
+    const finish = (settle: () => void) => {
+      if (rejectActive === reject) rejectActive = null
+      current.onmessage = null
+      current.onerror = null
+      settle()
+    }
+    current.onmessage = (event: MessageEvent<{ id: number; result: OptimizerResult }>) => {
+      if (event.data.id !== id) return
+      finish(() => resolve(event.data.result))
+    }
+    current.onerror = () => {
+      finish(() => reject(new Error('optimizer worker failed')))
+    }
+    current.postMessage({ id, ...input })
+  })
+}
+
+function continuousKey() {
+  const current = scenario.value
+  return JSON.stringify({
+    hitter: current.hitter,
+    opponent: current.opponent,
+    sideErrorM: current.shot.sideErrorM,
+    depthErrorM: current.shot.depthErrorM,
+    ballSpeedMps: current.shot.ballSpeedMps,
+    runSpeedMps: current.opponentSkill.runSpeedMps,
+    consistency: current.opponentSkill.consistency,
+  })
+}
+
+async function calculateRecommendation(options?: { manual?: boolean }) {
+  const manual = options?.manual === true
+  clearShotAfterGlide()
   isCalculating.value = true
   const startedAt = performance.now()
-
-  // findBestAim blocks the main thread, so let the loader paint first
-  await nextPaint()
-
+  const scenarioSnapshot = toPlain(scenario.value)
+  const drawsSnapshot = toPlain(draws.value)
+  const inputsKey = continuousKey()
   const searchStarted = performance.now()
-  const result = findBestAim(scenario.value, draws.value, riskWeight.value, GRID_CELLS, pastNetRange.value)
+  const pending = runFindBestAim({
+    scenario: scenarioSnapshot,
+    draws: drawsSnapshot,
+    riskWeight: riskWeight.value,
+    cellCount: GRID_CELLS,
+    pastNetRange: pastNetRange.value ? toPlain(pastNetRange.value) : undefined,
+  })
+  const id = requestId
+  let result: OptimizerResult
+  try {
+    result = await pending
+  } catch {
+    if (id !== requestId) return
+    isCalculating.value = false
+    return
+  }
+  if (id !== requestId) return
   computeTimeMs.value = Math.round(performance.now() - searchStarted)
+  await wait(Math.max(0, MIN_CALCULATING_MS - (performance.now() - startedAt)))
+  if (id !== requestId) return
 
-  await wait(MIN_LOADER_MS - (performance.now() - startedAt))
-
-  recommendation.value = result
-  isStale.value = false
-  shownShot.value = 'recommended'
+  const hadAim = recommendation.value !== null
+  recommendation.value = { best: result.best, results: result.results, scenario: scenarioSnapshot }
+  appliedDraws.value = drawsSnapshot
   isCalculating.value = false
-  playShownShot()
+  if (continuousKey() !== inputsKey) {
+    isStale.value = true
+    return
+  }
+  isStale.value = false
+  if (manual) shownShot.value = 'recommended'
+  if (manual || shownShot.value === 'recommended') {
+    await nextTick()
+    if (id !== requestId) return
+    playAfterGlide(hadAim)
+  }
 }
 
 function resetPositions() {
@@ -278,7 +394,26 @@ function resetPositions() {
   opponent.value = { ...DEFAULT_OPPONENT }
 }
 
-watch([scenario, riskPreference, shotsPerTarget, modelLevel, shotType], () => {
+watch(
+  () => [
+    modelLevel.value,
+    shotType.value,
+    shotAccuracy.value.level,
+    opponentSkill.value.level,
+    riskPreference.value,
+    shotsPerTarget.value,
+  ],
+  () => {
+    autoRecalc = true
+    queueMicrotask(() => {
+      autoRecalc = false
+    })
+    void calculateRecommendation({ manual: false })
+  },
+)
+
+watch(scenario, () => {
+  if (autoRecalc) return
   isStale.value = true
 }, { deep: true })
 
@@ -336,7 +471,7 @@ function closeSetup() {
 
 function calculateFromSetup() {
   closeSetup()
-  calculateRecommendation()
+  calculateRecommendation({ manual: true })
 }
 
 function showHowItWorks() {
@@ -352,11 +487,17 @@ onMounted(() => {
   syncNarrow()
   narrowQuery.addEventListener('change', syncNarrow)
   window.addEventListener('keydown', onWindowKeydown)
-  calculateRecommendation()
+  calculateRecommendation({ manual: true })
 })
 
 onUnmounted(() => {
   if (settingsReplayTimer !== null) clearTimeout(settingsReplayTimer)
+  clearShotAfterGlide()
+  requestId += 1
+  rejectActive?.(new Error('superseded'))
+  rejectActive = null
+  worker?.terminate()
+  worker = null
   narrowQuery?.removeEventListener('change', syncNarrow)
   window.removeEventListener('keydown', onWindowKeydown)
 })
@@ -435,7 +576,12 @@ onUnmounted(() => {
         <div class="court-wrapper">
           <div class="heading">
             <h2>Court</h2>
-            <button v-if="isStale" type="button" class="status is-stale" @click="calculateRecommendation">
+            <span v-if="isCalculating" class="status is-calculating" aria-live="polite">
+              <span class="status-dot" aria-hidden="true" />
+              Finding the best shot…
+            </span>
+            <button v-else-if="isStale" type="button" class="status is-stale"
+              @click="calculateRecommendation({ manual: true })">
               <span class="status-dot" aria-hidden="true" />
               Inputs changed · <span class="recalculate">Recalculate</span>
             </button>
@@ -448,28 +594,32 @@ onUnmounted(() => {
           <TennisCourt :surface="surface" :shot-accuracy="effectiveShot" :you="you" :opponent="opponent"
             v-model:target="target" :show-dispersion="showDispersion" :show-trajectory="showTrajectory"
             :show-heatmap="showHeatmap" :show-landings="showLandings" @update:you="you = $event"
-            @update:opponent="opponent = $event" :recommended-aim="recommendation?.best.aim" :is-stale="isStale"
-            :shown-shot="courtShot" :alternative-aim="alternative?.aim" :alternative-label="alternative?.label"
-            :aim-results="recommendation?.results" :simulated-landings="recommendedLandings" :vertical="isNarrow"
-            :ball-state="ballState" :bounce-point="bouncePoint" @drag-start="onDragStart" @drag-end="onDragEnd" />
+            @update:opponent="opponent = $event" :recommended-aim="recommendation?.best.aim"
+            :recommended-shot="recommendation?.scenario.shot" :recommended-hitter="recommendation?.scenario.hitter"
+            :is-stale="isStale" :shown-shot="courtShot" :alternative-aim="alternative?.aim"
+            :alternative-label="alternative?.label" :aim-results="recommendation?.results"
+            :simulated-landings="recommendedLandings" :vertical="isNarrow" :ball-state="ballState"
+            :bounce-point="bouncePoint" :is-calculating="isCalculating" @drag-start="onDragStart"
+            @drag-end="onDragEnd" />
           <CourtControls v-model:show-dispersion="showDispersion" v-model:show-trajectory="showTrajectory"
             v-model:show-heatmap="showHeatmap" v-model:show-landings="showLandings" :is-playing="isPlaying"
             :progress="progress" @play="playShownShot" @stop="stop" />
         </div>
         <ModelAnalytics ref="analyticsPanel" :recommended-landings="recommendedLandings"
           :recommended-landing-counts="recommendedLandingCounts" :results="recommendation?.results ?? []"
-          :recommended-aim="recommendation?.best.aim" :opponent="opponent" :shots-per-target="shotsPerTarget"
+          :recommended-aim="recommendation?.best.aim" :opponent="recommendation?.scenario.opponent ?? opponent"
+          :shots-per-target="shotsPerTarget"
           :candidate-count="candidateCount" :recommended-outcome="recommendation?.best.outcome"
           :compute-time-ms="computeTimeMs" :grid-cells="GRID_CELLS" :draws-count="shotsPerTarget"
-          :show-rally-win="modelLevel === 'detailed'" />
+          :show-rally-win="modelLevel === 'detailed'" :model-level="modelLevel"
+          :shot-label="SHOT_TYPE_PROFILES[shotType].label" :is-stale="isStale" />
       </div>
       <RightSidebar :aim="target" :opponent="opponent" :outcome="outcome" :interception="targetInterception"
         :recommended="recommendation?.best ?? null" :recommended-interception="recommendedInterception"
         :candidate-count="candidateCount" :shots-per-target="shotsPerTarget" :is-calculating="isCalculating"
         :range-note="targetRangeNote" :shown-shot="shownShot" :safest="safest" :highest-win="highestWin"
         :is-stale="isStale" :results="recommendation?.results ?? []" :show-rally-win="modelLevel === 'detailed'"
-        @calculate="calculateRecommendation"
-        @show-on-court="showOnCourt" />
+        @calculate="calculateRecommendation({ manual: true })" @show-on-court="showOnCourt" />
     </main>
   </div>
 </template>
@@ -667,6 +817,10 @@ main {
         height: 0.7rem;
         border-radius: 50%;
         background: var(--status-color);
+      }
+
+      &.is-calculating .status-dot {
+        animation: status-pulse 1.2s ease-in-out infinite;
       }
     }
 
@@ -938,9 +1092,19 @@ main {
   }
 }
 
+@keyframes status-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .setup-panel {
     transition: none;
+  }
+
+  .status.is-calculating .status-dot {
+    animation: none;
   }
 }
 </style>

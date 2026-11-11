@@ -11,8 +11,10 @@ const props = withDefaults(defineProps<{
     outcome: ShotOutcome
     computeTimeMs: number
     showRallyWin?: boolean
+    isStale?: boolean
 }>(), {
     showRallyWin: false,
+    isStale: false,
 })
 
 function withInterval(p: number, variance: number) {
@@ -50,10 +52,11 @@ const rows = computed(() => {
 </script>
 
 <template>
-    <section class="simulation-run">
+    <section class="simulation-run" :class="{ 'is-stale': isStale }">
         <div class="heading">
             <h3>Simulation run</h3>
-            <p>Last calculation</p>
+            <p v-if="isStale" class="out-of-date">Out of date</p>
+            <p v-else>Last calculation</p>
         </div>
         <dl>
             <div v-for="row in rows" :key="row.label" class="row">
@@ -90,6 +93,10 @@ const rows = computed(() => {
             color: var(--text-color-secondary);
             font-size: 1.1rem;
         }
+    }
+
+    &.is-stale dd {
+        opacity: 0.55;
     }
 
     .row {

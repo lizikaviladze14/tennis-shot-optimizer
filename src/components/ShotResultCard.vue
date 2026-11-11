@@ -17,15 +17,18 @@ const props = withDefaults(defineProps<{
     isActive?: boolean
     rangeNote?: string
     showRallyWin?: boolean
+    isStale?: boolean
 }>(), {
     accentColor: 'var(--text-color-primary)',
     isActive: false,
     rangeNote: undefined,
     showRallyWin: false,
+    isStale: false,
 })
 
 const emit = defineEmits<{
     showOnCourt: []
+    recalculate: []
 }>()
 
 const title = computed(() => targetLabel(props.aim))
@@ -72,7 +75,13 @@ const rows = computed(() => {
 </script>
 
 <template>
-    <div class="shot-result-card" :class="{ 'is-active': isActive }" :style="{ '--card-accent': accentColor }">
+    <div class="shot-result-card" :class="{ 'is-active': isActive, 'is-stale': isStale }"
+        :style="{ '--card-accent': accentColor }">
+        <p v-if="isStale" class="stale-label">
+            <span class="dot" aria-hidden="true" />
+            Out of date ·
+            <button type="button" @click="emit('recalculate')">Recalculate</button>
+        </p>
         <div class="heading">
             <h3>{{ heading }}</h3>
             <span v-if="isActive" class="on-court">On court</span>
@@ -119,6 +128,45 @@ const rows = computed(() => {
     --result-rally-color: color-mix(in srgb, var(--green) 55%, white);
 
     padding: 1.6rem;
+
+    &.is-stale .rows {
+        opacity: 0.55;
+    }
+
+    .stale-label {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin-bottom: 1.2rem;
+        color: var(--text-color-secondary);
+        font-size: 1.2rem;
+
+        .dot {
+            width: 0.7rem;
+            height: 0.7rem;
+            border-radius: 50%;
+            background: #f2b84b;
+        }
+
+        button {
+            padding: 0;
+            border: none;
+            background: none;
+            color: var(--green);
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+
+            &:hover {
+                text-decoration: underline;
+            }
+
+            &:focus-visible {
+                outline: 1px solid var(--text-color-secondary);
+                outline-offset: 2px;
+            }
+        }
+    }
 
     &.is-active {
         background: color-mix(in srgb, var(--card-accent) 5%, transparent);

@@ -8,6 +8,7 @@ import type { LandingCount, LandingKind } from '@/math/analytics'
 import type { AimResult } from '@/math/optimizer'
 import type { CourtPoint } from '@/math/point'
 import type { ShotOutcome } from '@/math/simulation'
+import type { ModelLevel } from '@/types/modelLevel'
 
 defineProps<{
     recommendedLandings: { point: CourtPoint; kind: LandingKind }[]
@@ -22,6 +23,9 @@ defineProps<{
     gridCells: number
     drawsCount: number
     showRallyWin?: boolean
+    modelLevel?: ModelLevel
+    shotLabel?: string
+    isStale?: boolean
 }>()
 
 const isOpen = ref(true)
@@ -82,9 +86,10 @@ defineExpose({ revealExplainer })
             <TargetValueMap :results="results" :recommended-aim="recommendedAim" :opponent="opponent" />
             <SimulationRun v-if="recommendedOutcome && computeTimeMs != null" :candidate-count="candidateCount"
                 :shots-per-target="shotsPerTarget" :outcome="recommendedOutcome" :compute-time-ms="computeTimeMs"
-                :show-rally-win="showRallyWin" />
+                :show-rally-win="showRallyWin" :is-stale="isStale" />
             <ModelExplainerCard id="how-the-model-works" class="explainer" :grid-cells="gridCells"
-                :draws-count="drawsCount" :highlighted="explainerHighlighted" />
+                :draws-count="drawsCount" :highlighted="explainerHighlighted" :model-level="modelLevel"
+                :shot-label="shotLabel" />
         </div>
     </div>
 </template>
