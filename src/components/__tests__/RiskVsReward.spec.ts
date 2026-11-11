@@ -62,7 +62,7 @@ describe('RiskVsReward', () => {
 
   it('has axis captions', () => {
     const text = mountChart().text()
-    expect(text).toContain('Wins the point outright')
+    expect(text).toContain('Wins the point')
     expect(text).toContain('Chance of missing')
     expect(text).toContain('each dot = one target')
     expect(text).toContain('25%')

@@ -7,7 +7,6 @@ import {
   metresRightOfCenter,
   targetLabel,
   targetZone,
-  zoneLabel,
 } from '../describeTarget'
 import {
   CENTER_SERVICE_Y_M,
@@ -68,33 +67,23 @@ describe('targetZone: depth', () => {
 })
 
 describe('targetZone: lateral', () => {
-  it('is left channel in the low-y third', () => {
-    expect(targetZone({ x: 18, y: SINGLES_ALLEY_M + 1 }).lateral).toBe('left channel')
+  it('is left in the low-y third', () => {
+    expect(targetZone({ x: 18, y: SINGLES_ALLEY_M + 1 }).lateral).toBe('left')
   })
 
   it('is center in the middle third', () => {
     expect(targetZone({ x: 18, y: c }).lateral).toBe('center')
   })
 
-  it('is right channel in the high-y third', () => {
-    expect(targetZone({ x: 18, y: COURT_SURFACE_WIDTH_M - SINGLES_ALLEY_M - 1 }).lateral).toBe('right channel')
+  it('is right in the high-y third', () => {
+    expect(targetZone({ x: 18, y: COURT_SURFACE_WIDTH_M - SINGLES_ALLEY_M - 1 }).lateral).toBe('right')
   })
 
   it('counts the third boundaries as center', () => {
     expect(targetZone({ x: 18, y: LEFT_THIRD_Y_M }).lateral).toBe('center')
-    expect(targetZone({ x: 18, y: LEFT_THIRD_Y_M - 0.01 }).lateral).toBe('left channel')
+    expect(targetZone({ x: 18, y: LEFT_THIRD_Y_M - 0.01 }).lateral).toBe('left')
     expect(targetZone({ x: 18, y: RIGHT_THIRD_Y_M }).lateral).toBe('center')
-    expect(targetZone({ x: 18, y: RIGHT_THIRD_Y_M + 0.01 }).lateral).toBe('right channel')
-  })
-})
-
-describe('zoneLabel', () => {
-  it('capitalizes the first word', () => {
-    expect(zoneLabel({ depth: 'short', lateral: 'right channel' })).toBe('Short · right channel')
-  })
-
-  it('labels the design example', () => {
-    expect(zoneLabel(targetZone({ x: NET_X_M + 3.4, y: c + 1.8 }))).toBe('Short · right channel')
+    expect(targetZone({ x: 18, y: RIGHT_THIRD_Y_M + 0.01 }).lateral).toBe('right')
   })
 })
 

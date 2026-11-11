@@ -26,7 +26,7 @@ withDefaults(defineProps<{
                 <p class="label">01 · AIM</p>
                 <h4>{{ modelLevel === 'detailed' ? 'Try every spot your shot can reach' : 'Try every spot' }}</h4>
                 <p v-if="modelLevel === 'detailed'">The opponent's singles court is split into a {{ gridCells }} ×
-                    {{ gridCells }} grid. Only targets your {{ shotLabel }} can realistically land on are tried: each
+                    {{ gridCells }} grid. Only targets your {{ shotLabel }} can land on are tried: each
                     shot type has its own range of depths.</p>
                 <p v-else>The opponent's singles court is split into a {{ gridCells }} × {{ gridCells }} grid. The center
                     of each cell is a candidate target.</p>
@@ -60,8 +60,8 @@ withDefaults(defineProps<{
                 <p v-if="modelLevel === 'detailed'">A returned ball still counts: it's worth the chance you go on to win
                     the rally, higher when your ball landed deep. A miss costs λ, from your risk preference. The target
                     with the highest value is recommended.</p>
-                <p v-else>A returned ball still counts for something: the chance you go on to win the rally, higher if
-                    your ball landed deep. λ comes from your risk preference.</p>
+                <p v-else>P(win) is the chance an in ball is not returned. A miss costs λ, from your risk preference.
+                    The target with the highest value is recommended.</p>
             </li>
         </ol>
         <p v-if="modelLevel === 'detailed'" class="not-modeled">Not modeled: spin direction, net clearance, the

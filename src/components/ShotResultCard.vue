@@ -65,7 +65,7 @@ const rows = computed(() => {
     const list = [
         { id: 'in', label: 'Lands in', shortLabel: 'Lands in', value: props.outcome.pIn },
         { id: 'return', label: 'Opponent gets it back (if in)', shortLabel: 'Opponent gets it back', value: props.outcome.pReturnGivenIn },
-        { id: 'win', label: 'Wins the point', shortLabel: 'Wins outright', value: props.outcome.pWin },
+        { id: 'win', label: 'Wins the point', shortLabel: 'Wins the point', value: props.outcome.pWin },
     ]
     if (props.showRallyWin) {
         list.push({ id: 'rally', label: 'Wins the rally', shortLabel: 'Wins the rally', value: props.outcome.pRallyWin })

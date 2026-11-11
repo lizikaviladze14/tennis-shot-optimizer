@@ -240,7 +240,7 @@ function calloutStyle(label: PlacedLabel) {
     }
 }
 
-const rewardCaption = computed(() => (props.showRallyWin ? 'Wins the rally ↑' : '↑ Wins the point outright'))
+const rewardCaption = computed(() => (props.showRallyWin ? 'Wins the rally ↑' : '↑ Wins the point'))
 const chartLabel = computed(() =>
     props.showRallyWin
         ? 'Scatter of candidate targets: chance of missing versus chance of winning the rally'

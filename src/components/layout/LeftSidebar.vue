@@ -2,7 +2,8 @@
 import type { TennisCourtSurface } from '@/types/tennisCourt'
 import IconReset from '@/assets/icons/icon-reset.vue'
 import { computed } from 'vue'
-import { describePlayerPosition, DEFAULT_YOU, DEFAULT_OPPONENT } from '@/math/playerPosition'
+import { DEFAULT_YOU, DEFAULT_OPPONENT } from '@/math/playerPosition'
+import { describePlayerPosition } from '@/utils/courtLabels'
 import type { CourtPoint } from '@/math/point'
 import { SHOT_ACCURACY_PRESETS, type ShotAccuracy, type ShotAccuracyLevel } from '@/types/shotAccuracy'
 import { OPPONENT_SKILL_PRESETS, type OpponentSkill, type OpponentSkillLevel } from '@/types/opponentSkill'
@@ -230,7 +231,7 @@ const opponentDescription = computed(() => describePlayerPosition('opponent', pr
                 <p v-if="modelLevel !== 'detailed'" class="hint">Errors are one standard deviation of where your shots
                     land
                     around the point you aim at.
-                    Ball speed is an illustrative average, including the bounce.</p>
+                    Ball speed is an illustrative average.</p>
             </div>
         </section>
 

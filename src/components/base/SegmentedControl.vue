@@ -34,6 +34,7 @@ const emit = defineEmits<{
     .option {
         display: flex;
         align-items: center;
+        justify-content: center;
         padding: 0.7rem 1rem;
         border: none;
         border-radius: 0.7rem;

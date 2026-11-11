@@ -26,6 +26,8 @@ import type { LandingKind } from '@/math/analytics'
 import { GRID_CELLS } from '@/math/modelConstants'
 import { heatmapCells as heatmapRectangles } from '@/math/heatmap'
 import { courtToViewBox, viewBoxToCourt } from './courtView'
+import { placeLabels } from '@/utils/labelPlacement'
+import { metresPastNet, targetZone } from '@/math/describeTarget'
 
 interface Props {
     surface?: TennisCourtSurface
@@ -115,7 +117,6 @@ const playerMarkerOutlineRadiusDragging = 0.6
 const playerMarkerRadius = 0.35
 const playerMarkerDotRadius = 0.26
 const playerMarkerOutlineOpacity = 0.28
-const playerMarkerLabelGap = 0.25
 
 const targetDiamondSize = 0.6
 const targetDiamondRadius = 0.08
@@ -134,7 +135,6 @@ const recommendedDotRadius = 0.1
 
 // alternative aim (safest or highest win), shown when picked in Compare alternatives
 const alternativeColor = 'var(--text-color-primary)'
-const alternativeLabelWidth = computed(() => props.alternativeLabel.length * 0.17 + 0.5)
 
 const RECOMMENDED_GLIDE_MS = 400
 
@@ -429,7 +429,24 @@ function nudge(who: 'you' | 'opponent', event: KeyboardEvent) {
     movePlayer(who, { x: current.x + direction.x * step, y: current.y + direction.y * step })
 }
 
+function nudgeTarget(event: KeyboardEvent) {
+    const direction = KEY_DIRECTIONS.value[event.key]
+    if (!direction) return
+    event.preventDefault()
+    const step = event.shiftKey ? MARKER_KEY_STEP_SHIFT_M : MARKER_KEY_STEP_M
+    moveTarget({
+        x: props.target.x + direction.x * step,
+        y: props.target.y + direction.y * step,
+    })
+}
+
 const markerKeyHint = 'Arrow keys move it 25 cm, Shift and arrow keys move it 1 m.'
+
+const targetAriaLabel = computed(() => {
+    const pastNet = metresPastNet(props.target).toFixed(1)
+    const lateral = targetZone(props.target).lateral
+    return `Your target, ${pastNet} m past the net, ${lateral}`
+})
 
 // hover tooltip: the nearest grid cell from the last calculation.
 // The grid only covers the singles court, so there's no estimate outside it.
@@ -467,73 +484,68 @@ const tooltipFlipY = computed(() => {
     return toView(aim.value).y > viewBoxHeight.value * 0.7
 })
 
-const labelLift = playerMarkerOutlineRadiusDragging + playerMarkerLabelGap
-const youLabel = computed(() => {
-    const view = toView(props.you)
-    return { x: view.x, y: view.y - labelLift }
-})
-const opponentLabel = computed(() => {
-    const view = toView(props.opponent)
-    return { x: view.x, y: view.y - labelLift }
-})
-
-const aimChipHeight = 0.56
-const aimChipGap = 0.12
-
-function placeAimChip(view: CourtPoint, width: number, markerHalf: number) {
-    const below = view.y + markerHalf + playerMarkerLabelGap + aimChipHeight / 2
-    const above = view.y - markerHalf - playerMarkerLabelGap - aimChipHeight / 2
-    const fitsBelow = below + aimChipHeight / 2 <= viewBoxHeight.value - 0.15
-    const y = fitsBelow ? below : above
-    const x = Math.min(Math.max(0.15, view.x - width / 2), Math.max(0.15, viewBoxWidth.value - width - 0.15))
-    return { x, y, width }
-}
-
-function aimChipsOverlap(a: { x: number; y: number; width: number }, b: { x: number; y: number; width: number }) {
-    return (
-        a.x < b.x + b.width + aimChipGap &&
-        a.x + a.width + aimChipGap > b.x &&
-        Math.abs(a.y - b.y) < aimChipHeight + aimChipGap
-    )
-}
-
-function clearAimChip(
-    chip: { x: number; y: number; width: number },
-    blockers: { x: number; y: number; width: number }[],
-) {
-    let y = chip.y
-    const fits = (center: number) =>
-        center - aimChipHeight / 2 >= 0.12 && center + aimChipHeight / 2 <= viewBoxHeight.value - 0.12
-    for (let pass = 0; pass < 4; pass++) {
-        let moved = false
-        for (const other of blockers) {
-            if (!aimChipsOverlap({ ...chip, y }, other)) continue
-            const down = other.y + aimChipHeight + aimChipGap
-            const up = other.y - aimChipHeight - aimChipGap
-            const next = y >= other.y && fits(down) ? down : fits(up) ? up : down
-            if (next !== y) {
-                y = next
-                moved = true
-            }
-        }
-        if (!moved) break
+const courtLabels = computed(() => {
+    const markers = []
+    if (recommendedPoint.value) {
+        const view = toView(recommendedPoint.value)
+        markers.push({
+            id: 'recommended',
+            text: 'Recommended',
+            markerX: view.x,
+            markerY: view.y,
+            markerRadius: recommendedRingRadius,
+            kind: 'aim' as const,
+        })
     }
-    return { ...chip, y }
-}
-
-const aimLabels = computed(() => {
-    const target = placeAimChip(toView(props.target), 2.6, targetDiamondSize / Math.SQRT2)
-    const recommended = recommendedPoint.value
-        ? clearAimChip(placeAimChip(toView(recommendedPoint.value), 2.8, recommendedRingRadius), [target])
-        : null
-    const alternative =
-        props.shownShot === 'alternative' && props.alternativeAim
-            ? clearAimChip(
-                placeAimChip(toView(props.alternativeAim), alternativeLabelWidth.value, recommendedRingRadius),
-                recommended ? [target, recommended] : [target],
-            )
-            : null
-    return { target, recommended, alternative }
+    {
+        const view = toView(props.target)
+        markers.push({
+            id: 'target',
+            text: 'Your target',
+            markerX: view.x,
+            markerY: view.y,
+            markerRadius: targetDiamondSize / Math.SQRT2,
+            kind: 'aim' as const,
+        })
+    }
+    if (props.shownShot === 'alternative' && props.alternativeAim) {
+        const view = toView(props.alternativeAim)
+        markers.push({
+            id: 'alternative',
+            text: props.alternativeLabel,
+            markerX: view.x,
+            markerY: view.y,
+            markerRadius: recommendedRingRadius,
+            kind: 'aim' as const,
+        })
+    }
+    {
+        const view = toView(props.you)
+        markers.push({
+            id: 'you',
+            text: 'YOU',
+            markerX: view.x,
+            markerY: view.y,
+            markerRadius: playerMarkerOutlineRadius,
+            kind: 'hitter' as const,
+        })
+    }
+    {
+        const view = toView(props.opponent)
+        markers.push({
+            id: 'opponent',
+            text: 'OPPONENT',
+            markerX: view.x,
+            markerY: view.y,
+            markerRadius: playerMarkerOutlineRadius,
+            kind: 'opponent' as const,
+        })
+    }
+    return placeLabels(
+        markers,
+        { width: viewBoxWidth.value, height: viewBoxHeight.value },
+        { vertical: props.vertical },
+    )
 })
 const yourSideLabel = computed(() =>
     props.vertical
@@ -562,7 +574,24 @@ function placeTarget(event: PointerEvent) {
     const point = pointerToCourt(event)
     if (!point) return
     if (!isOnOpponentHalf(point)) return
-    emit('update:target', { x: point.x, y: point.y })
+    emit('update:target', clampTarget(point))
+}
+
+function clampTarget(point: CourtPoint) {
+    const half = targetDiamondSize / Math.SQRT2
+    const y = Math.min(
+        COURT_SURFACE_WIDTH_M + RUNOFF_M - half,
+        Math.max(-RUNOFF_M + half, point.y),
+    )
+    const x = Math.min(
+        COURT_SURFACE_LENGTH_M + RUNOFF_M - half,
+        Math.max(NET_X_M + half, point.x),
+    )
+    return { x, y }
+}
+
+function moveTarget(point: CourtPoint) {
+    emit('update:target', clampTarget(point))
 }
 
 function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
@@ -657,14 +686,19 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 </g>
 
                 <!-- Target marker -->
-                <rect :x="courtX + target.x - targetDiamondSize / 2" :y="courtY + target.y - targetDiamondSize / 2"
-                    :width="targetDiamondSize" :height="targetDiamondSize" :rx="targetDiamondRadius"
-                    fill="var(--court-target-color)" stroke="#111" stroke-width="0.07" transform="rotate(45)"
-                    :transform-origin="`${courtX + target.x} ${courtY + target.y}`" pointer-events="none" />
+                <g class="target-marker" tabindex="0" role="button" aria-roledescription="movable marker"
+                    :aria-label="targetAriaLabel" @keydown="nudgeTarget($event)">
+                    <title>Your target</title>
+                    <rect :x="courtX + target.x - targetDiamondSize / 2" :y="courtY + target.y - targetDiamondSize / 2"
+                        :width="targetDiamondSize" :height="targetDiamondSize" :rx="targetDiamondRadius"
+                        fill="var(--court-target-color)" stroke="#111" stroke-width="0.07" transform="rotate(45)"
+                        :transform-origin="`${courtX + target.x} ${courtY + target.y}`" />
+                </g>
 
                 <!-- Recommended aim: ring with a dot -->
                 <g v-if="recommendedPoint" :opacity="recommendedOpacity" pointer-events="none"
                     :transform="`translate(${courtX + recommendedPoint.x} ${courtY + recommendedPoint.y})`">
+                    <title>Recommended</title>
                     <circle :r="recommendedRingRadius" fill="rgba(0, 0, 0, 0.35)" :stroke="recommendedColor"
                         stroke-width="0.08" />
                     <circle :r="recommendedDotRadius" :fill="recommendedColor" />
@@ -674,6 +708,7 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 <g v-if="shownShot === 'alternative' && alternativeAim" :opacity="isStale ? 0.5 : 1"
                     pointer-events="none"
                     :transform="`translate(${courtX + alternativeAim.x} ${courtY + alternativeAim.y})`">
+                    <title>{{ alternativeLabel }}</title>
                     <circle :r="recommendedRingRadius" fill="rgba(0, 0, 0, 0.35)" :stroke="alternativeColor"
                         stroke-width="0.08" />
                     <circle :r="recommendedDotRadius" :fill="alternativeColor" />
@@ -693,6 +728,7 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 <g :class="{ 'player-marker': true, 'is-dragging': dragging === 'you' }" tabindex="0" role="button"
                     aria-roledescription="movable marker" :aria-label="`Your position. ${markerKeyHint}`"
                     @pointerdown="startDrag('you', $event)" @keydown="nudge('you', $event)">
+                    <title>You</title>
                     <circle :cx="courtX + you.x" :cy="courtY + you.y"
                         :r="dragging === 'you' ? playerMarkerOutlineRadiusDragging : playerMarkerOutlineRadius"
                         fill="var(--player-marker-you-outline-color)" :opacity="playerMarkerOutlineOpacity" />
@@ -705,6 +741,7 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 <g :class="{ 'player-marker': true, 'is-dragging': dragging === 'opponent' }" tabindex="0" role="button"
                     aria-roledescription="movable marker" :aria-label="`Opponent position. ${markerKeyHint}`"
                     @pointerdown="startDrag('opponent', $event)" @keydown="nudge('opponent', $event)">
+                    <title>Opponent</title>
                     <circle :cx="courtX + opponent.x" :cy="courtY + opponent.y"
                         :r="dragging === 'opponent' ? playerMarkerOutlineRadiusDragging : playerMarkerOutlineRadius"
                         fill="var(--player-marker-opponent-outline-color)" :opacity="playerMarkerOutlineOpacity" />
@@ -731,42 +768,48 @@ function movePlayer(who: 'you' | 'opponent', point: CourtPoint) {
                 :y="opponentSideLabel.y" :text-anchor="opponentSideLabel.anchor" dominant-baseline="middle"
                 font-size="0.38">OPPONENT'S SIDE</text>
 
-            <g :transform="`translate(${youLabel.x} ${youLabel.y})`" pointer-events="none">
-                <rect x="-0.7" y="-0.28" width="1.4" height="0.56" rx="0.28"
+            <g v-if="courtLabels.you" :transform="`translate(${courtLabels.you.x} ${courtLabels.you.y})`"
+                pointer-events="none">
+                <rect x="0" y="0" :width="courtLabels.you.width" :height="courtLabels.you.height" rx="0.28"
                     fill="var(--player-marker-you-dot-color)" />
-                <text font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
-                    font-weight="700" fill="var(--text-color-tertiary)">YOU</text>
+                <text :x="courtLabels.you.width / 2" :y="courtLabels.you.height / 2" font-family="Inter, sans-serif"
+                    text-anchor="middle" dominant-baseline="central" font-size="0.3" font-weight="700"
+                    fill="var(--text-color-tertiary)">YOU</text>
             </g>
-            <g :transform="`translate(${opponentLabel.x} ${opponentLabel.y})`" pointer-events="none">
-                <rect x="-1.3" y="-0.28" width="2.6" height="0.56" rx="0.28"
+            <g v-if="courtLabels.opponent"
+                :transform="`translate(${courtLabels.opponent.x} ${courtLabels.opponent.y})`" pointer-events="none">
+                <rect x="0" y="0" :width="courtLabels.opponent.width" :height="courtLabels.opponent.height" rx="0.28"
                     fill="var(--player-marker-opponent-dot-color)" />
-                <text font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
+                <text :x="courtLabels.opponent.width / 2" :y="courtLabels.opponent.height / 2"
+                    font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
                     font-weight="700" fill="var(--text-color-tertiary)">OPPONENT</text>
             </g>
 
-            <g :transform="`translate(${aimLabels.target.x} ${aimLabels.target.y})`" pointer-events="none">
-                <rect x="0" y="-0.28" :width="aimLabels.target.width" height="0.56" rx="0.12" fill="#111"
-                    fill-opacity="0.8" />
-                <text :x="aimLabels.target.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
-                    dominant-baseline="central" font-size="0.3" font-weight="700" fill="var(--court-target-color)">Your
-                    target</text>
+            <g v-if="courtLabels.target" :transform="`translate(${courtLabels.target.x} ${courtLabels.target.y})`"
+                pointer-events="none">
+                <rect x="0" y="0" :width="courtLabels.target.width" :height="courtLabels.target.height" rx="0.12"
+                    fill="#111" fill-opacity="0.8" />
+                <text :x="courtLabels.target.width / 2" :y="courtLabels.target.height / 2"
+                    font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
+                    font-weight="700" fill="var(--court-target-color)">Your target</text>
             </g>
 
-            <g v-if="recommendedPoint && aimLabels.recommended" :opacity="isStale ? 0.5 : 1" pointer-events="none"
-                :transform="`translate(${aimLabels.recommended.x} ${aimLabels.recommended.y})`">
-                <rect x="0" y="-0.28" :width="aimLabels.recommended.width" height="0.56" rx="0.28"
-                    :fill="recommendedColor" />
-                <text :x="aimLabels.recommended.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
-                    dominant-baseline="central" font-size="0.3" font-weight="700" fill="#0b1a10">Recommended</text>
+            <g v-if="recommendedPoint && courtLabels.recommended" :opacity="isStale ? 0.5 : 1" pointer-events="none"
+                :transform="`translate(${courtLabels.recommended.x} ${courtLabels.recommended.y})`">
+                <rect x="0" y="0" :width="courtLabels.recommended.width" :height="courtLabels.recommended.height"
+                    rx="0.28" :fill="recommendedColor" />
+                <text :x="courtLabels.recommended.width / 2" :y="courtLabels.recommended.height / 2"
+                    font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
+                    font-weight="700" fill="#0b1a10">Recommended</text>
             </g>
 
-            <g v-if="aimLabels.alternative" :opacity="isStale ? 0.5 : 1" pointer-events="none"
-                :transform="`translate(${aimLabels.alternative.x} ${aimLabels.alternative.y})`">
-                <rect x="0" y="-0.28" :width="aimLabels.alternative.width" height="0.56" rx="0.12" fill="#111"
-                    fill-opacity="0.8" />
-                <text :x="aimLabels.alternative.width / 2" font-family="Inter, sans-serif" text-anchor="middle"
-                    dominant-baseline="central" font-size="0.3" font-weight="700" :fill="alternativeColor">{{
-                        alternativeLabel }}</text>
+            <g v-if="courtLabels.alternative" :opacity="isStale ? 0.5 : 1" pointer-events="none"
+                :transform="`translate(${courtLabels.alternative.x} ${courtLabels.alternative.y})`">
+                <rect x="0" y="0" :width="courtLabels.alternative.width" :height="courtLabels.alternative.height"
+                    rx="0.12" fill="#111" fill-opacity="0.8" />
+                <text :x="courtLabels.alternative.width / 2" :y="courtLabels.alternative.height / 2"
+                    font-family="Inter, sans-serif" text-anchor="middle" dominant-baseline="central" font-size="0.3"
+                    font-weight="700" :fill="alternativeColor">{{ alternativeLabel }}</text>
             </g>
         </svg>
 
@@ -866,9 +909,19 @@ svg {
     }
 
     // the outer ring is translucent, so the focus stroke goes on the solid circle
-    .player-marker:focus-visible circle:nth-child(2) {
+    .player-marker:focus-visible circle:nth-of-type(2) {
         stroke: #fff;
         stroke-width: 0.06;
+    }
+
+    .target-marker {
+        outline: none;
+        cursor: grab;
+    }
+
+    .target-marker:focus-visible rect {
+        stroke: #fff;
+        stroke-width: 0.1;
     }
 
     .bounce-ring {

@@ -17,11 +17,17 @@ function toggle() {
     if (props.disabled) return
     emit('update:modelValue', !props.modelValue)
 }
+
+function onKeydown(event: KeyboardEvent) {
+    if (event.key !== ' ' && event.key !== 'Enter') return
+    event.preventDefault()
+    toggle()
+}
 </script>
 
 <template>
     <div class="base-checkbox" :class="{ 'is-on': modelValue }" role="checkbox" :aria-checked="modelValue"
-        :disabled="disabled" @click="toggle">
+        :aria-disabled="disabled || undefined" :tabindex="disabled ? -1 : 0" @click="toggle" @keydown="onKeydown">
         <span class="box" />
         <slot />
     </div>
@@ -49,8 +55,13 @@ function toggle() {
         background: var(--checkbox-bg-color);
     }
 
-    &:disabled {
+    &[aria-disabled='true'] {
         cursor: default;
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--text-color-secondary);
+        outline-offset: 2px;
     }
 }
 

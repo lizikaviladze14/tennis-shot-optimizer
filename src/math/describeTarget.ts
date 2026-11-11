@@ -9,10 +9,11 @@ import {
 } from './courtGeometry'
 import type { CourtPoint } from './point'
 import { isPointInCourt } from './shotScore'
+import { zoneLabel } from '@/utils/courtLabels'
 
 export type TargetZone = {
   depth: 'short' | 'mid' | 'deep'
-  lateral: 'left channel' | 'center' | 'right channel'
+  lateral: 'left' | 'center' | 'right'
 }
 
 const DEEP_ZONE_M = 3
@@ -48,13 +49,8 @@ export function targetZone(aim: CourtPoint): TargetZone {
       : aim.x >= COURT_SURFACE_LENGTH_M - DEEP_ZONE_M
         ? 'deep'
         : 'mid'
-  const lateral =
-    aim.y < LEFT_THIRD_Y_M ? 'left channel' : aim.y > RIGHT_THIRD_Y_M ? 'right channel' : 'center'
+  const lateral = aim.y < LEFT_THIRD_Y_M ? 'left' : aim.y > RIGHT_THIRD_Y_M ? 'right' : 'center'
   return { depth, lateral }
-}
-
-export function zoneLabel(zone: TargetZone): string {
-  return `${zone.depth.charAt(0).toUpperCase()}${zone.depth.slice(1)} · ${zone.lateral}`
 }
 
 /**

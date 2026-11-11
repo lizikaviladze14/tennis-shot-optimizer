@@ -608,10 +608,9 @@ onUnmounted(() => {
         <ModelAnalytics ref="analyticsPanel" :recommended-landings="recommendedLandings"
           :recommended-landing-counts="recommendedLandingCounts" :results="recommendation?.results ?? []"
           :recommended-aim="recommendation?.best.aim" :opponent="recommendation?.scenario.opponent ?? opponent"
-          :shots-per-target="shotsPerTarget"
-          :candidate-count="candidateCount" :recommended-outcome="recommendation?.best.outcome"
-          :compute-time-ms="computeTimeMs" :grid-cells="GRID_CELLS" :draws-count="shotsPerTarget"
-          :show-rally-win="modelLevel === 'detailed'" :model-level="modelLevel"
+          :shots-per-target="shotsPerTarget" :candidate-count="candidateCount"
+          :recommended-outcome="recommendation?.best.outcome" :compute-time-ms="computeTimeMs" :grid-cells="GRID_CELLS"
+          :draws-count="shotsPerTarget" :show-rally-win="modelLevel === 'detailed'" :model-level="modelLevel"
           :shot-label="SHOT_TYPE_PROFILES[shotType].label" :is-stale="isStale" />
       </div>
       <RightSidebar :aim="target" :opponent="opponent" :outcome="outcome" :interception="targetInterception"
@@ -880,8 +879,8 @@ main {
       align-items: flex-end;
       justify-content: center;
       gap: 0.5rem;
-      width: 3.6rem;
-      height: 3.6rem;
+      width: 4.4rem;
+      height: 4.4rem;
       padding: 0 0.9rem;
       border: 1px solid var(--layout-border-color);
       border-radius: 1rem;
@@ -1002,7 +1001,7 @@ main {
     }
 
     .done {
-      padding: 0;
+      padding: 0 0.4rem;
       border: none;
       background: transparent;
       color: var(--text-color-primary);
