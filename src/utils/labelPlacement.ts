@@ -16,6 +16,8 @@ export type MarkerLabel = {
   /** Half-size of the marker, used as clearance before the label. */
   markerRadius: number
   kind: LabelKind
+  /** Extra space on each side of the text (viewBox metres), on top of the default. */
+  paddingX?: number
 }
 
 export type PlaceLabelsOptions = {
@@ -47,9 +49,12 @@ function viewSidesFor(kind: LabelKind, vertical: boolean): ViewSide[] {
   return ['left', 'right', 'above', 'below']
 }
 
-/** Estimated chip size from the label text. ViewBox metres, not DOM pixels. */
-export function estimateLabelSize(text: string, fontSize = 0.3, height = 0.56) {
-  const width = text.length * fontSize * 0.55 + 0.5
+/**
+ * Estimated chip size from the label text. ViewBox metres, not DOM pixels.
+ * paddingX adds that much space on each side of the text.
+ */
+export function estimateLabelSize(text: string, fontSize = 0.3, height = 0.56, paddingX = 0) {
+  const width = text.length * fontSize * 0.55 + 0.5 + 2 * paddingX
   return { width, height }
 }
 
@@ -129,7 +134,7 @@ export function placeLabels(
   const result: Record<string, LabelBox | null> = {}
 
   for (const marker of markers) {
-    const size = estimateLabelSize(marker.text, fontSize, height)
+    const size = estimateLabelSize(marker.text, fontSize, height, marker.paddingX ?? 0)
     let chosen: LabelBox | null = null
     for (const side of viewSidesFor(marker.kind, vertical)) {
       const box = candidateBox(marker, side, size, gap)

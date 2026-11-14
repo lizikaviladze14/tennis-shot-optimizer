@@ -14,6 +14,13 @@ describe('estimateLabelSize', () => {
   it('grows with the text length', () => {
     expect(estimateLabelSize('YOU').width).toBeLessThan(estimateLabelSize('OPPONENT').width)
   })
+
+  it('adds paddingX on both sides of the text', () => {
+    const plain = estimateLabelSize('YOU')
+    const padded = estimateLabelSize('YOU', 0.3, 0.56, 0.15)
+    expect(padded.width).toBeCloseTo(plain.width + 0.3)
+    expect(padded.height).toBe(plain.height)
+  })
 })
 
 describe('placeLabels', () => {

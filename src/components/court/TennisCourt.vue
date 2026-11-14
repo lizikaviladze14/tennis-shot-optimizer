@@ -484,6 +484,9 @@ const tooltipFlipY = computed(() => {
     return toView(aim.value).y > viewBoxHeight.value * 0.7
 })
 
+/** Extra side padding for the rounded player and Recommended chips (viewBox metres). */
+const PILL_LABEL_PADDING_X = 0.15
+
 const courtLabels = computed(() => {
     const markers = []
     if (recommendedPoint.value) {
@@ -491,6 +494,7 @@ const courtLabels = computed(() => {
         markers.push({
             id: 'recommended',
             text: 'Recommended',
+            paddingX: PILL_LABEL_PADDING_X,
             markerX: view.x,
             markerY: view.y,
             markerRadius: recommendedRingRadius,
@@ -524,6 +528,7 @@ const courtLabels = computed(() => {
         markers.push({
             id: 'you',
             text: 'YOU',
+            paddingX: PILL_LABEL_PADDING_X,
             markerX: view.x,
             markerY: view.y,
             markerRadius: playerMarkerOutlineRadius,
@@ -535,6 +540,7 @@ const courtLabels = computed(() => {
         markers.push({
             id: 'opponent',
             text: 'OPPONENT',
+            paddingX: PILL_LABEL_PADDING_X,
             markerX: view.x,
             markerY: view.y,
             markerRadius: playerMarkerOutlineRadius,

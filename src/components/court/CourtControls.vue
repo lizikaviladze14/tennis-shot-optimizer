@@ -254,11 +254,13 @@ watch(showLandings, (value) => emit('update:showLandings', value))
                 display: inline;
             }
 
-            :deep(.base-checkbox) {
-                flex: 1;
+            // Sized to their text, so they wrap onto a second line when the row is too narrow
+            :deep(.base-checkbox),
+            .play {
+                flex: 1 1 auto;
                 justify-content: center;
-                min-width: 0;
-                padding: 0.7rem 0.6rem;
+                padding: 0.8rem 1.4rem;
+                border-radius: 0.6rem;
                 font-size: 1.1rem;
             }
 
