@@ -994,7 +994,7 @@ main {
   .setup-footer {
     display: block;
     flex: none;
-    padding: 1.2rem 1.6rem calc(1.2rem + env(safe-area-inset-bottom));
+    padding: 1.2rem 1.6rem calc(1.2rem + var(--badge-clearance) + env(safe-area-inset-bottom));
     border-top: 1px solid var(--layout-border-color);
     background: var(--layout-bg-color);
   }
@@ -1033,7 +1033,7 @@ main {
     flex-direction: column;
     min-height: 0;
     overflow-y: auto;
-    padding: 0 1.4rem calc(1.6rem + env(safe-area-inset-bottom));
+    padding: 0 1.4rem calc(1.6rem + var(--badge-clearance) + env(safe-area-inset-bottom));
     scrollbar-width: thin;
     scrollbar-color: #2a3340 transparent;
   }

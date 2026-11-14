@@ -42,6 +42,10 @@
   --border-radius: 1.2rem;
 
   --checkbox-bg-color: #1a2027;
+
+  // Space kept free at the bottom of scrolling areas so the "Powered by Netlify"
+  // badge (fixed to the bottom-right corner, about 61px tall) never covers content.
+  --badge-clearance: 7rem;
   --options-bg-color: #0b0e11;
 
   // sensitivity verdicts

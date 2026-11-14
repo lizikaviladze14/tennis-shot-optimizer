@@ -498,7 +498,7 @@ $mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1.6rem;
+  padding: 1.6rem 1.6rem calc(1.6rem + var(--badge-clearance));
   scrollbar-width: thin;
   scrollbar-color: #2a3340 transparent;
 }

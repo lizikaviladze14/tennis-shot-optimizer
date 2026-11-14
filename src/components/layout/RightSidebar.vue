@@ -91,6 +91,7 @@ const emit = defineEmits<{
     flex-direction: column;
     gap: 1.2rem;
     min-height: 0;
+    padding-bottom: var(--badge-clearance);
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: #2a3340 transparent;
@@ -193,6 +194,7 @@ const emit = defineEmits<{
 @media (max-width: $layout-wide) {
     .right-sidebar {
         width: auto;
+        padding-bottom: 0;
         overflow: visible;
         background: transparent;
         border: none;
