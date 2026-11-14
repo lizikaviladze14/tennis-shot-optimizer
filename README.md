@@ -4,7 +4,7 @@
 opponent stand, how accurate you are, how fast they run — and the app simulates
 thousands of shots to every spot on the court and recommends the best target.
 
-**[Live demo →](https://YOUR-SITE.netlify.app)**
+**[Live demo → tennis-shot-optimizer.netlify.app](https://tennis-shot-optimizer.netlify.app/)**
 
 ![Tennis Shot Optimizer: court with the recommended target, shot scatter and results](docs/screenshots/overview.png)
 
@@ -72,10 +72,13 @@ miss. The app puts numbers on that trade-off:
    most often. Use **Show on court** to see any of them on the court.
 4. **Test your own idea:** click a spot on the opponent's side. The sidebar
    shows **Your target** next to the **Recommended shot**, so you can compare them.
+
+![Clay court with simulated landings around the recommended target, and your own target for comparison](docs/screenshots/landings.png)
+
 5. **Explore:** turn on the heatmap or simulated landings below the court, and
    open **Model analytics** for the full picture.
 
-![Simulated landings on a clay court, with Risk vs reward and Compare alternatives](docs/screenshots/results.png)
+![Model analytics: where shots land, target value map and simulation run, with Risk vs reward and Compare alternatives](docs/screenshots/analytics.png)
 
 6. **Check how solid the advice is:** in Model analytics, click
    **Test assumptions**. Pick a setup, press **Run**, and see which parameters
@@ -85,7 +88,8 @@ miss. The app puts numbers on that trade-off:
 
 ## Getting started
 
-Requires **Node.js 22.18+ or 24.12+**.
+No setup is needed to try it: open the [live demo](https://tennis-shot-optimizer.netlify.app/).
+To run it locally, you need **Node.js 22.18+ or 24.12+**.
 
 ```sh
 git clone https://github.com/lizikaviladze14/tennis-shot-optimizer.git
