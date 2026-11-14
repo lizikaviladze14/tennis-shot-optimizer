@@ -92,6 +92,7 @@ describe('findBestAim', () => {
     bounce: { afterBounceSpeedMps: 25, playableWindowS: 0 },
     depthSpeed: { minPastNetM: 0, maxPastNetM: 1, minFactor: 1 },
     returnValue: { atNet: 0, atBaseline: 0 },
+    reachSteepness: 3,
   }
   const { best, results } = findBestAim(scenario, [{ z1: 0, z2: 0 }], 0.4, 27)
 
@@ -122,6 +123,7 @@ describe('findBestAim pastNetRange', () => {
     bounce: { afterBounceSpeedMps: 25, playableWindowS: 0 },
     depthSpeed: { minPastNetM: 0, maxPastNetM: 1, minFactor: 1 },
     returnValue: { atNet: 0, atBaseline: 0 },
+    reachSteepness: 3,
   }
   const draws = [{ z1: 0, z2: 0 }]
   const riskWeight = 0.4

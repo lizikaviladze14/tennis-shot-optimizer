@@ -11,6 +11,7 @@ const scenario: ShotScenario = {
   bounce: { afterBounceSpeedMps: 25, playableWindowS: 0 },
   depthSpeed: { minPastNetM: 0, maxPastNetM: 1, minFactor: 1 },
   returnValue: { atNet: 0, atBaseline: 0 },
+  reachSteepness: 3,
 }
 
 const withErrors = (depthErrorM: number, sideErrorM: number): ShotScenario => ({

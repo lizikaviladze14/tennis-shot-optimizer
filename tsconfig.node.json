@@ -6,7 +6,8 @@
     "vitest.config.*",
     "cypress.config.*",
     "playwright.config.*",
-    "eslint.config.*"
+    "eslint.config.*",
+    "scripts/**/*.ts"
   ],
   "compilerOptions": {
     // Most tools use transpilation instead of Node.js's native type-stripping.
@@ -17,6 +18,11 @@
 
     // Include Node.js types and avoid accidentally including other `@types/*` packages.
     "types": ["node"],
+
+    // scripts/ import app code that uses the @/ alias.
+    "paths": {
+      "@/*": ["./src/*"]
+    },
 
     // Disable emitting output during `vue-tsc --build`, which is used for type-checking only.
     "noEmit": true,

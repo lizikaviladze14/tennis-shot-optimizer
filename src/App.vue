@@ -22,7 +22,7 @@ import { DEFAULT_SHOT_COUNT, type ShotCount } from '@/types/shotCount'
 import CourtControls from './components/court/CourtControls.vue'
 import type { AimResult } from '@/math/optimizer'
 import type { StandardDraw } from '@/math/random'
-import { GRID_CELLS, PLAYABLE_WINDOW_S, RETURN_VALUE_AT_BASELINE, RETURN_VALUE_AT_NET } from '@/math/modelConstants'
+import { GRID_CELLS } from '@/math/modelConstants'
 import { highestWinResult, safestResult, type WinMetric } from '@/math/analytics'
 import type { ShownShot } from '@/types/shownShot'
 import { simulatedLandings, landingCounts } from '@/math/analytics'
@@ -30,7 +30,7 @@ import ModelAnalytics from './components/ModelAnalytics.vue'
 import SegmentedControl from '@/components/base/SegmentedControl.vue'
 import { SHOT_TYPE_PROFILES, type ShotType } from '@/types/shotTypes'
 import type { ModelLevel } from '@/types/modelLevel'
-import { applyShotProfile } from '@/math/shotProfle'
+import { buildScenario } from '@/analysis/scenario'
 
 const surface = ref<TennisCourtSurface>('hard')
 const shotAccuracy = ref<ShotAccuracy>({
@@ -49,47 +49,6 @@ const modelLevelOptions: { id: ModelLevel; label: string }[] = [
   { id: 'simple', label: 'Simple' },
   { id: 'detailed', label: 'Detailed' },
 ]
-
-const effectiveShot = computed(() =>
-  modelLevel.value === 'detailed'
-    ? applyShotProfile(shotAccuracy.value, SHOT_TYPE_PROFILES[shotType.value])
-    : shotAccuracy.value,
-)
-
-const pastNetRange = computed(() => {
-  if (modelLevel.value !== 'detailed') return undefined
-  const profile = SHOT_TYPE_PROFILES[shotType.value]
-  return { min: profile.minPastNetM, max: profile.maxPastNetM }
-})
-
-const bounce = computed(() =>
-  modelLevel.value === 'detailed'
-    ? {
-      afterBounceSpeedMps:
-        effectiveShot.value.ballSpeedMps * SHOT_TYPE_PROFILES[shotType.value].afterBounceSpeedFactor,
-      playableWindowS: PLAYABLE_WINDOW_S,
-    }
-    : {
-      afterBounceSpeedMps: effectiveShot.value.ballSpeedMps,
-      playableWindowS: 0,
-    },
-)
-
-const depthSpeed = computed(() => {
-  if (modelLevel.value !== 'detailed') return { minPastNetM: 0, maxPastNetM: 1, minFactor: 1 }
-  const profile = SHOT_TYPE_PROFILES[shotType.value]
-  return {
-    minPastNetM: profile.minPastNetM,
-    maxPastNetM: profile.maxPastNetM,
-    minFactor: profile.minDepthSpeedFactor,
-  }
-})
-
-const returnValue = computed(() =>
-  modelLevel.value === 'detailed'
-    ? { atNet: RETURN_VALUE_AT_NET, atBaseline: RETURN_VALUE_AT_BASELINE }
-    : { atNet: 0, atBaseline: 0 },
-)
 
 function selectAccuracy(level: ShotAccuracyLevel) {
   shotAccuracy.value = { level, ...SHOT_ACCURACY_PRESETS[level] }
@@ -134,14 +93,29 @@ const DRAWS_SEED = 42
 const shotsPerTarget = ref<ShotCount>(DEFAULT_SHOT_COUNT)
 const draws = computed(() => createDraws(shotsPerTarget.value, mulberry32(DRAWS_SEED)))
 
-const scenario = computed<ShotScenario>(() => ({
-  hitter: you.value,
-  opponent: opponent.value,
-  shot: effectiveShot.value,
-  opponentSkill: opponentSkill.value,
-  bounce: bounce.value,
-  depthSpeed: depthSpeed.value,
-  returnValue: returnValue.value,
+const builtScenario = computed(() =>
+  buildScenario({
+    modelLevel: modelLevel.value,
+    shotType: shotType.value,
+    shot: shotAccuracy.value,
+    opponentSkill: opponentSkill.value,
+    hitter: you.value,
+    opponent: opponent.value,
+  }),
+)
+const scenario = computed<ShotScenario>(() => builtScenario.value.scenario)
+const effectiveShot = computed(() => scenario.value.shot)
+const pastNetRange = computed(() => builtScenario.value.pastNetRange)
+
+/** Plain snapshot for the "Test assumptions" dialog's "Copy my current setup". */
+const labSetup = computed(() => ({
+  hitterLevel: shotAccuracy.value.level,
+  opponentLevel: opponentSkill.value.level,
+  shotType: shotType.value,
+  risk: riskPreference.value,
+  shotsPerTarget: shotsPerTarget.value,
+  hitter: { x: you.value.x, y: you.value.y },
+  opponent: { x: opponent.value.x, y: opponent.value.y },
 }))
 
 const outcome = computed(() => estimateShotOutcome(scenario.value, target.value, draws.value))
@@ -611,7 +585,7 @@ onUnmounted(() => {
           :shots-per-target="shotsPerTarget" :candidate-count="candidateCount"
           :recommended-outcome="recommendation?.best.outcome" :compute-time-ms="computeTimeMs" :grid-cells="GRID_CELLS"
           :draws-count="shotsPerTarget" :show-rally-win="modelLevel === 'detailed'" :model-level="modelLevel"
-          :shot-label="SHOT_TYPE_PROFILES[shotType].label" :is-stale="isStale" />
+          :shot-label="SHOT_TYPE_PROFILES[shotType].label" :is-stale="isStale" :app-setup="labSetup" />
       </div>
       <RightSidebar :aim="target" :opponent="opponent" :outcome="outcome" :interception="targetInterception"
         :recommended="recommendation?.best ?? null" :recommended-interception="recommendedInterception"

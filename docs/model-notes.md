@@ -1,5 +1,7 @@
 # Model notes
 
+How much each illustrative parameter matters: see docs/sensitivity.md.
+
 Detailed adds more factors (shot types, bounce, rally value); it is not a claim that results match real tennis. All parameters are illustrative.
 
 ## Documented simplification: hitter mishits are not modeled

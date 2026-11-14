@@ -4,6 +4,7 @@ import WhereShotsLand from '@/components/WhereShotsLand.vue'
 import TargetValueMap from '@/components/TargetValueMap.vue'
 import SimulationRun from '@/components/SimulationRun.vue'
 import ModelExplainerCard from '@/components/ModelExplainerCard.vue'
+import SensitivityLab, { type AppSetup } from '@/components/SensitivityLab.vue'
 import type { LandingCount, LandingKind } from '@/math/analytics'
 import type { AimResult } from '@/math/optimizer'
 import type { CourtPoint } from '@/math/point'
@@ -26,6 +27,8 @@ defineProps<{
     modelLevel?: ModelLevel
     shotLabel?: string
     isStale?: boolean
+    /** The app's current setup, for the "Test assumptions" dialog's "Copy my current setup". */
+    appSetup: AppSetup
 }>()
 
 const isOpen = ref(true)
@@ -57,6 +60,19 @@ async function revealExplainer() {
     }, 1800)
 }
 
+const labOpen = ref(false)
+const labButton = ref<HTMLButtonElement | null>(null)
+
+function openLab() {
+    labOpen.value = true
+}
+
+async function closeLab() {
+    labOpen.value = false
+    await nextTick()
+    labButton.value?.focus()
+}
+
 defineExpose({ revealExplainer })
 </script>
 
@@ -69,6 +85,10 @@ defineExpose({ revealExplainer })
                     Where your shots land, how every target scored, and how the model works
                 </p>
             </div>
+
+            <button ref="labButton" type="button" class="lab-button" aria-haspopup="dialog" @click.stop="openLab">
+                Test assumptions
+            </button>
 
             <button type="button" class="toggle" :aria-expanded="isOpen" aria-controls="model-analytics-panel"
                 @click.stop="toggle">
@@ -91,6 +111,8 @@ defineExpose({ revealExplainer })
                 :draws-count="drawsCount" :highlighted="explainerHighlighted" :model-level="modelLevel"
                 :shot-label="shotLabel" />
         </div>
+
+        <SensitivityLab :open="labOpen" :app-setup="appSetup" @close="closeLab" />
     </div>
 </template>
 
@@ -124,8 +146,30 @@ defineExpose({ revealExplainer })
             letter-spacing: 0.12em;
         }
 
-        .toggle {
+        .lab-button {
+            flex: none;
             margin-left: auto;
+            padding: 0.6rem 1.1rem;
+            border: 1px solid var(--layout-border-color);
+            border-radius: 0.8rem;
+            background: var(--checkbox-bg-color);
+            color: var(--text-color-primary);
+            font: inherit;
+            font-size: 1.2rem;
+            cursor: pointer;
+
+            &:hover {
+                background: #222a33;
+            }
+
+            &:focus-visible {
+                outline: 1px solid var(--text-color-secondary);
+                outline-offset: 2px;
+            }
+        }
+
+        .toggle {
+            margin-left: 0.8rem;
             padding: 0.4rem;
             border: none;
             background: transparent;

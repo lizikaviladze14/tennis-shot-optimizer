@@ -4,7 +4,6 @@ import { COURT_SURFACE_LENGTH_M, NET_X_M } from './courtGeometry'
 import { metresPastNet } from './describeTarget'
 import { interpolateByDepth } from './interpolate'
 import { landingPoint } from './landing'
-import { REACH_STEEPNESS } from './modelConstants'
 import { bestInterception, returnProbability, type BounceSettings, type Interception } from './opponent'
 import { depthSpeedFactor } from './shotProfle'
 import type { CourtPoint } from './point'
@@ -22,6 +21,8 @@ export type ShotScenario = {
       landed: atNet for a landing at the net, atBaseline at the baseline,
       linear in between. { atNet: 0, atBaseline: 0 } turns this off. */
   returnValue: { atNet: number; atBaseline: number }
+  /** How quickly the chance of reaching the ball drops around the edge of reach (1/m). REACH_STEEPNESS in the app. */
+  reachSteepness: number
 }
 
 export type ShotOutcome = {
@@ -108,7 +109,7 @@ export function estimateShotOutcome(
         landing,
         aimBallSpeed,
         opponentSkill,
-        REACH_STEEPNESS,
+        scenario.reachSteepness,
         aimBounce,
       )
       returnSum += pReturn
