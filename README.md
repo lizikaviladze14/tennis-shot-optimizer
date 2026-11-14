@@ -89,7 +89,7 @@ miss. The app puts numbers on that trade-off:
 ## Getting started
 
 No setup is needed to try it: open the [live demo](https://tennis-shot-optimizer.netlify.app/).
-To run it locally, you need **Node.js 22.18+ or 24.12+**.
+To run it locally, you need **Node.js 22.22+, 24.15+ or 26+** (the latest LTS release works).
 
 ```sh
 git clone https://github.com/lizikaviladze14/tennis-shot-optimizer.git
