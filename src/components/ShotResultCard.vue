@@ -51,9 +51,11 @@ const sentence = computed(() => {
     const where = afterBounceM < 0.1
         ? `They'd have to reach the landing spot: ${metres(distanceNeededM)} m away, with ${metres(coverageM)} m of reach.`
         : `They'd play it about ${metres(afterBounceM)} m after the bounce: they need ${metres(distanceNeededM)} m and can cover ${metres(coverageM)} m.`
+    // A gap of a few centimetres rounds to 0.0, so say it in words instead
+    const isTooClose = metres(Math.abs(marginM)) === '0.0'
     const spare = marginM > 0
-        ? ` Short by ${metres(marginM)} m.`
-        : ` ${metres(-marginM)} m to spare.`
+        ? isTooClose ? ' Just out of reach.' : ` Short by ${metres(marginM)} m.`
+        : isTooClose ? ' Just reaches it in time.' : ` ${metres(-marginM)} m to spare.`
     return `Lands ${fromOpponent} m from your opponent ${sideline}. ${where}${spare}`
 })
 

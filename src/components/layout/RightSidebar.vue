@@ -16,6 +16,8 @@ withDefaults(defineProps<{
     interception: Interception
     recommended?: AimResult | null
     recommendedInterception?: Interception
+    /** Where the opponent stood when the recommendation was calculated */
+    recommendedOpponent?: CourtPoint
     candidateCount: number
     shotsPerTarget: number
     isCalculating?: boolean
@@ -29,6 +31,7 @@ withDefaults(defineProps<{
 }>(), {
     recommended: null,
     recommendedInterception: undefined,
+    recommendedOpponent: undefined,
     isCalculating: false,
     shownShot: 'target',
     safest: null,
@@ -61,7 +64,7 @@ const emit = defineEmits<{
                 <p class="hint">Tests {{ candidateCount }} candidate targets with {{ shotsPerTarget }} shots each.</p>
             </div>
             <ShotResultCard v-if="recommended && recommendedInterception" class="recommended"
-                heading="Recommended shot" :aim="recommended.aim" :opponent="opponent" :outcome="recommended.outcome"
+                heading="Recommended shot" :aim="recommended.aim" :opponent="recommendedOpponent ?? opponent" :outcome="recommended.outcome"
                 :interception="recommendedInterception" accent-color="var(--green)" :show-rally-win="showRallyWin"
                 :is-active="shownShot === 'recommended'" :is-stale="isStale"
                 @show-on-court="emit('showOnCourt', 'recommended')" @recalculate="emit('calculate')" />

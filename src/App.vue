@@ -203,8 +203,10 @@ function showOnCourt(shot: ShownShot) {
   if (!(isStale.value && shot !== 'target')) playShownShot()
 }
 
+// Uses the setup the recommendation was calculated with, so its sentence matches
+// its percentages while the results are out of date
 const recommendedInterception = computed(() =>
-  recommendation.value ? aimInterception(scenario.value, recommendation.value.best.aim) : undefined,
+  recommendation.value ? aimInterception(recommendation.value.scenario, recommendation.value.best.aim) : undefined,
 )
 
 const candidateCount = computed(() => recommendation.value?.results.length ?? GRID_CELLS * GRID_CELLS)
@@ -589,7 +591,7 @@ onUnmounted(() => {
       </div>
       <RightSidebar :aim="target" :opponent="opponent" :outcome="outcome" :interception="targetInterception"
         :recommended="recommendation?.best ?? null" :recommended-interception="recommendedInterception"
-        :candidate-count="candidateCount" :shots-per-target="shotsPerTarget" :is-calculating="isCalculating"
+        :recommended-opponent="recommendation?.scenario.opponent" :candidate-count="candidateCount" :shots-per-target="shotsPerTarget" :is-calculating="isCalculating"
         :range-note="targetRangeNote" :shown-shot="shownShot" :safest="safest" :highest-win="highestWin"
         :is-stale="isStale" :results="recommendation?.results ?? []" :show-rally-win="modelLevel === 'detailed'"
         @calculate="calculateRecommendation({ manual: true })" @show-on-court="showOnCourt" />
