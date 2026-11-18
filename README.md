@@ -8,8 +8,6 @@ thousands of shots to every spot on the court and recommends the best target.
 
 ![Demo: setting up a point, running the simulation and viewing the recommended target](docs/media/demo.gif)
 
-![Tennis Shot Optimizer: court with the recommended target, shot scatter and results](docs/screenshots/overview.png)
-
 > **Note:** this is a model, not a coach. It uses simple physics and probability
 > with illustrative values that are not fitted to real match data. It shows how
 > accuracy, speed, position and risk trade off against each other, not what a
@@ -29,6 +27,8 @@ miss. The app puts numbers on that trade-off:
 4. **Score:** it combines the chance of landing in, the chance of a winner and
    your risk preference into one score, and recommends the target with the
    best score.
+
+![Tennis Shot Optimizer: court with the recommended target, shot scatter and results](docs/screenshots/overview.png)
 
 ## Features
 
