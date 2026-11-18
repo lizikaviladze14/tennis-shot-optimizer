@@ -6,6 +6,8 @@ thousands of shots to every spot on the court and recommends the best target.
 
 **[Live demo → tennis-shot-optimizer.netlify.app](https://tennis-shot-optimizer.netlify.app/)**
 
+![Demo: setting up a point, running the simulation and viewing the recommended target](docs/media/demo.gif)
+
 ![Tennis Shot Optimizer: court with the recommended target, shot scatter and results](docs/screenshots/overview.png)
 
 > **Note:** this is a model, not a coach. It uses simple physics and probability
